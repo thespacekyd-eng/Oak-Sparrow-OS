@@ -37,7 +37,7 @@ fun RecentDecisionsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(records.reversed()) { record ->
+        items(records.sortedByDescending { it.timestamp }) { record ->
             DecisionRow(record)
         }
     }

@@ -85,9 +85,15 @@ fun TechnicalDetailScreen(
                             if (snapshot.warmupComplete) stringResource(R.string.technical_steady)
                             else stringResource(R.string.technical_warmup))
                         MonoRow(stringResource(R.string.technical_current_gamma),
-                            String.format(Locale.ROOT, "%.6f", snapshot.gamma))
-                        MonoRow(stringResource(R.string.technical_envelope),
-                            snapshot.referenceEnvelopeDescription)
+                            String.format(Locale.ROOT, "%.2f", snapshot.gamma))
+                        // Envelope: stacked vertically because the description is long
+                        Text(stringResource(R.string.technical_envelope),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp))
+                        Text(snapshot.referenceEnvelopeDescription,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(top = 2.dp))
                     }
                 }
             }
@@ -183,12 +189,17 @@ private fun SystemEventRow(event: SystemEventRecord) {
         SystemEventRecord.Severity.WARN -> Color(0xFFFF9800)
         SystemEventRecord.Severity.ERROR -> MaterialTheme.colorScheme.error
     }
-    Row(modifier = Modifier.padding(vertical = 2.dp)) {
-        Text(time, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
-            modifier = Modifier.width(48.dp))
-        Text(event.kind, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
-            color = severityColor, modifier = Modifier.width(120.dp))
-        Text(event.message, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+    // Stacked: timestamp + kind on line 1, message on line 2
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Row {
+            Text(time, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(8.dp))
+            Text(event.kind, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace,
+                color = severityColor)
+        }
+        Text(event.message, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(start = 0.dp, top = 2.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -43,6 +43,27 @@ object ActionTemplates {
         else -> kind.replace('_', ' ')
     }
 
+    /**
+     * Bare-infinitive phrase for the body template "Your agent wants to ___".
+     * Distinct from [pastTenseLabel] which is for the activity feed.
+     * Do not collapse the two — they have different grammatical contexts.
+     */
+    fun infinitivePhrase(kind: String): String = when (kind) {
+        "send_email" -> "send an email"
+        "post_social" -> "post to social media"
+        "schedule_event" -> "schedule an event"
+        "delete_file" -> "delete a file"
+        "send_message" -> "send a message"
+        "make_payment" -> "make a payment"
+        "read_file" -> "read a file"
+        "read_contacts" -> "access your contacts"
+        "write_file" -> "save a file"
+        "open_app" -> "open an app"
+        "create_account" -> "create an account"
+        "sign_document" -> "sign a document"
+        else -> kind.replace('_', ' ')
+    }
+
     /** Map Outcome to plain-English label. */
     fun outcomeLabel(outcome: dev.governance.core.Outcome): String = when (outcome) {
         dev.governance.core.Outcome.PASS -> "approved"
@@ -71,18 +92,18 @@ object ActionTemplates {
      * is for display when the payload target is unavailable.
      */
     fun targetForKind(kind: String): String = when (kind) {
-        "send_email" -> "this email"
-        "post_social" -> "this post"
-        "schedule_event" -> "this event"
-        "delete_file" -> "this file"
-        "send_message" -> "this message"
-        "make_payment" -> "this payment"
-        "read_file" -> "this file"
+        "send_email" -> "an email"
+        "post_social" -> "social media"
+        "schedule_event" -> "an event"
+        "delete_file" -> "a file"
+        "send_message" -> "a message"
+        "make_payment" -> "a payment"
+        "read_file" -> "a file"
         "read_contacts" -> "" // template doesn't use target
-        "write_file" -> "this file"
-        "open_app" -> "this app"
-        "create_account" -> "this service"
-        "sign_document" -> "this document"
+        "write_file" -> "a file"
+        "open_app" -> "an app"
+        "create_account" -> "a new service"
+        "sign_document" -> "a document"
         else -> kind.replace('_', ' ')
     }
 }

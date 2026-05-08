@@ -3,6 +3,7 @@ package dev.governance.android.app.ui
 import dev.governance.core.*
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotBeEmpty
 import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.hours
@@ -121,6 +122,43 @@ class UiLogicTest : FunSpec({
 
     test("targetForKind for unknown kind returns readable phrase") {
         ActionTemplates.targetForKind("launch_rocket") shouldBe "launch rocket"
+    }
+
+    // -- infinitivePhrase --
+
+    test("infinitivePhrase returns non-empty for all registered kinds") {
+        allKinds.forEach { kind ->
+            ActionTemplates.infinitivePhrase(kind).shouldNotBeEmpty()
+        }
+    }
+
+    test("infinitivePhrase never returns past-tense forms") {
+        allKinds.forEach { kind ->
+            val firstWord = ActionTemplates.infinitivePhrase(kind).substringBefore(' ')
+            firstWord shouldNotBe "sent"
+            firstWord shouldNotBe "posted"
+            firstWord shouldNotBe "scheduled"
+            firstWord shouldNotBe "deleted"
+            firstWord shouldNotBe "made"
+            firstWord shouldNotBe "saved"
+            firstWord shouldNotBe "opened"
+            firstWord shouldNotBe "created"
+            firstWord shouldNotBe "signed"
+            firstWord shouldNotBe "accessed"
+        }
+    }
+
+    test("infinitivePhrase concrete mappings") {
+        ActionTemplates.infinitivePhrase("send_email") shouldBe "send an email"
+        ActionTemplates.infinitivePhrase("post_social") shouldBe "post to social media"
+        ActionTemplates.infinitivePhrase("read_file") shouldBe "read a file"
+        ActionTemplates.infinitivePhrase("delete_file") shouldBe "delete a file"
+    }
+
+    test("targetForKind never returns the same word as the template verb") {
+        ActionTemplates.targetForKind("post_social") shouldBe "social media"
+        ActionTemplates.targetForKind("send_email") shouldBe "an email"
+        ActionTemplates.targetForKind("read_file") shouldBe "a file"
     }
 
     test("targetForKind never returns a raw number") {

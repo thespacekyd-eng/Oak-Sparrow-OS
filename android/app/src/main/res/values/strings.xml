@@ -40,17 +40,17 @@
     <string name="auth_body_irreversible">Your agent wants to %1$s. This can\'t be undone.</string>
 
     <!-- Action kind templates -->
-    <string name="action_send_email">Send email to %1$s?</string>
+    <string name="action_send_email">Send %1$s?</string>
     <string name="action_post_social">Post to %1$s?</string>
     <string name="action_schedule_event">Schedule %1$s?</string>
     <string name="action_delete_file">Delete %1$s?</string>
-    <string name="action_send_message">Send message to %1$s?</string>
-    <string name="action_make_payment">Pay %1$s?</string>
+    <string name="action_send_message">Send %1$s?</string>
+    <string name="action_make_payment">Make %1$s?</string>
     <string name="action_read_file">Read %1$s?</string>
     <string name="action_read_contacts">Access your contacts?</string>
-    <string name="action_write_file">Save file %1$s?</string>
+    <string name="action_write_file">Save %1$s?</string>
     <string name="action_open_app">Open %1$s?</string>
-    <string name="action_create_account">Create account on %1$s?</string>
+    <string name="action_create_account">Create an account on %1$s?</string>
     <string name="action_sign_document">Sign %1$s?</string>
     <string name="action_fallback">Approve action: %1$s?</string>
 
@@ -74,7 +74,7 @@
     <string name="technical_title">Technical details</string>
     <string name="technical_gamma_trajectory">Gamma trajectory (24h)</string>
     <string name="technical_attestation_chain">Attestation chain status</string>
-    <string name="technical_all_verified">100%% verified (last 24h)</string>
+    <string name="technical_all_verified">100% verified (last 24h)</string>
     <string name="technical_verification_problem">Verification problem at %1$s</string>
     <string name="technical_calibrator">Calibrator state</string>
     <string name="technical_mode">Mode</string>

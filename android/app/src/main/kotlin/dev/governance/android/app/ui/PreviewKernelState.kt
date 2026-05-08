@@ -37,13 +37,14 @@ object PreviewKernelState {
         reversibility: Reversibility = Reversibility.FullyReversible,
         minutesAgo: Int = 0,
         seq: Long = 0L,
+        gamma: Double = 0.37,
     ): GateDecision {
         val ts = now - minutesAgo.minutes
         return signer.sign(
             outcome = outcome,
             actionId = ActionId("preview-${kind}-$minutesAgo"),
             actionKind = kind,
-            gamma = 0.37,
+            gamma = gamma,
             entropy = 0.12,
             divergence = 0.08,
             reversibility = reversibility,
@@ -54,12 +55,20 @@ object PreviewKernelState {
         )
     }
 
+    // 12 decisions spanning 24 hours with realistic varying gamma for the chart
     val recentDecisions: List<GateDecision> = listOf(
-        makeDecision("send_email", Outcome.PASS, minutesAgo = 2, seq = 0),
-        makeDecision("delete_file", Outcome.VETO, Reversibility.Irreversible, minutesAgo = 5, seq = 1),
-        makeDecision("post_social", Outcome.HOLD, Reversibility.OneShot, minutesAgo = 12, seq = 2),
-        makeDecision("read_file", Outcome.PASS, minutesAgo = 18, seq = 3),
-        makeDecision("send_message", Outcome.PASS, minutesAgo = 30, seq = 4),
+        makeDecision("read_file", Outcome.PASS, minutesAgo = 1380, seq = 0, gamma = 0.30),  // 23h ago
+        makeDecision("send_email", Outcome.PASS, minutesAgo = 1200, seq = 1, gamma = 0.28), // 20h ago
+        makeDecision("read_file", Outcome.PASS, minutesAgo = 1020, seq = 2, gamma = 0.22),  // 17h ago
+        makeDecision("open_app", Outcome.PASS, minutesAgo = 840, seq = 3, gamma = 0.18),    // 14h ago
+        makeDecision("delete_file", Outcome.HOLD, Reversibility.OneShot, minutesAgo = 720, seq = 4, gamma = 0.15), // 12h
+        makeDecision("send_message", Outcome.PASS, minutesAgo = 600, seq = 5, gamma = 0.20), // 10h ago
+        makeDecision("post_social", Outcome.HOLD, Reversibility.OneShot, minutesAgo = 480, seq = 6, gamma = 0.25), // 8h
+        makeDecision("read_contacts", Outcome.PASS, minutesAgo = 360, seq = 7, gamma = 0.30), // 6h ago
+        makeDecision("send_email", Outcome.PASS, minutesAgo = 240, seq = 8, gamma = 0.35),  // 4h ago
+        makeDecision("delete_file", Outcome.VETO, Reversibility.Irreversible, minutesAgo = 120, seq = 9, gamma = 0.40), // 2h
+        makeDecision("read_file", Outcome.PASS, minutesAgo = 30, seq = 10, gamma = 0.38),   // 30 min ago
+        makeDecision("send_email", Outcome.PASS, minutesAgo = 2, seq = 11, gamma = 0.37),   // 2 min ago
     )
 
     val auditRecords: List<AuditRecord> = recentDecisions.mapIndexed { i, d ->
@@ -67,7 +76,7 @@ object PreviewKernelState {
             auditId = d.auditId,
             proposedAction = ProposedAction(d.actionId, d.actionKind, d.reversibility),
             stateBefore = GovernanceState(
-                gamma = 0.37,
+                gamma = d.gamma,
                 referenceEnvelope = ReferenceEnvelope(listOf(0.7, 0.2, 0.1), 2.0, "preview"),
                 recentHistory = emptyList(),
                 decisionsObserved = i.toLong(),

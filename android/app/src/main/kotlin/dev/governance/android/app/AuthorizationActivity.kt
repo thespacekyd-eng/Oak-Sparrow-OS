@@ -110,9 +110,9 @@ internal fun HoldConfirmationDialog(
                     Spacer(Modifier.height(16.dp))
 
                     val bodyTemplate = if (isIrreversible)
-                        stringResource(R.string.auth_body_irreversible, ActionTemplates.pastTenseLabel(decision.actionKind))
+                        stringResource(R.string.auth_body_irreversible, ActionTemplates.infinitivePhrase(decision.actionKind))
                     else
-                        stringResource(R.string.auth_body_template, ActionTemplates.pastTenseLabel(decision.actionKind))
+                        stringResource(R.string.auth_body_template, ActionTemplates.infinitivePhrase(decision.actionKind))
                     Text(bodyTemplate, style = MaterialTheme.typography.bodyMedium)
 
                     Spacer(Modifier.height(24.dp))
