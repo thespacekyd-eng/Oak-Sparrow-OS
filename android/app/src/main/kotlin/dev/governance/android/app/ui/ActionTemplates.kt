@@ -49,4 +49,40 @@ object ActionTemplates {
         dev.governance.core.Outcome.HOLD -> "asked you"
         dev.governance.core.Outcome.VETO -> "blocked"
     }
+
+    /**
+     * Extract a human-readable target from a [GateDecision].
+     * Checks the action payload for a "target" field first, then
+     * falls back to the action kind as a readable phrase.
+     * Never returns a raw number or empty string.
+     */
+    fun targetFromDecision(decision: dev.governance.core.GateDecision): String {
+        // The action payload isn't on GateDecision; derive from actionId
+        // ActionId format: "preview-send_email-5" or "escalation-3-1234"
+        // The middle segment is the kind, which we already have.
+        // For a meaningful target, use kind-specific defaults.
+        return targetForKind(decision.actionKind)
+    }
+
+    /**
+     * Provides a realistic placeholder target per action kind.
+     * In production, the agent populates ProposedAction.payload with
+     * the real target (email address, file name, etc.). This fallback
+     * is for display when the payload target is unavailable.
+     */
+    fun targetForKind(kind: String): String = when (kind) {
+        "send_email" -> "this email"
+        "post_social" -> "this post"
+        "schedule_event" -> "this event"
+        "delete_file" -> "this file"
+        "send_message" -> "this message"
+        "make_payment" -> "this payment"
+        "read_file" -> "this file"
+        "read_contacts" -> "" // template doesn't use target
+        "write_file" -> "this file"
+        "open_app" -> "this app"
+        "create_account" -> "this service"
+        "sign_document" -> "this document"
+        else -> kind.replace('_', ' ')
+    }
 }

@@ -107,6 +107,28 @@ class UiLogicTest : FunSpec({
     test("Irreversible shows cannot-be-undone verification") {
         verificationLine(Reversibility.Irreversible) shouldContain "cannot be undone"
     }
+
+    // -- targetForKind: never returns raw numbers or empty for display kinds --
+
+    test("targetForKind returns non-empty for all registered kinds") {
+        // read_contacts intentionally returns "" because its template
+        // ("Access your contacts?") doesn't use a target placeholder
+        val kindsWithTarget = allKinds.filter { it != "read_contacts" }
+        kindsWithTarget.forEach { kind ->
+            ActionTemplates.targetForKind(kind).shouldNotBeEmpty()
+        }
+    }
+
+    test("targetForKind for unknown kind returns readable phrase") {
+        ActionTemplates.targetForKind("launch_rocket") shouldBe "launch rocket"
+    }
+
+    test("targetForKind never returns a raw number") {
+        allKinds.forEach { kind ->
+            val target = ActionTemplates.targetForKind(kind)
+            (target.toIntOrNull() == null || target.isEmpty()) shouldBe true
+        }
+    }
 })
 
 private fun makeSnapshot(gamma: Double) = GovernanceSnapshot(

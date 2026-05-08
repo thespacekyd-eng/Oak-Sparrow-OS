@@ -87,7 +87,7 @@ internal fun HoldConfirmationDialog(
 
     val animatedProgress by animateFloatAsState(targetValue = remaining, label = "countdown")
 
-    val target = decision.actionId.value.substringAfterLast("-").ifEmpty { decision.actionKind }
+    val target = ActionTemplates.targetFromDecision(decision)
     val questionResId = ActionTemplates.questionResId(decision.actionKind)
     val isIrreversible = decision.reversibility == Reversibility.OneShot ||
         decision.reversibility == Reversibility.Irreversible

@@ -23,7 +23,7 @@ import org.junit.Test
 
 /**
  * Paparazzi screenshot tests for all Phase 2B screens.
- * Each screen is rendered at 380x800 in light and dark mode.
+ * Each screen is rendered at Pixel 5 size (393x851 dp) in light and dark mode.
  *
  * Run: ./gradlew :android-app:recordPaparazziDebug
  * Verify: ./gradlew :android-app:verifyPaparazziDebug
@@ -32,10 +32,7 @@ class ScreenshotTests {
 
     @get:Rule
     val paparazzi = Paparazzi(
-        deviceConfig = DeviceConfig.PIXEL_5.copy(
-            screenWidth = 380,
-            screenHeight = 800,
-        ),
+        deviceConfig = DeviceConfig.PIXEL_5,
     )
 
     // -- HomeScreen --
