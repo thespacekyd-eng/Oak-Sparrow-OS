@@ -8,30 +8,43 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import dev.governance.android.platform.parcel.GovernanceSnapshotParcel
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import dev.governance.android.app.ui.PreviewKernelState
+import dev.governance.android.app.ui.screens.*
+import dev.governance.android.app.ui.theme.OakSparrowTheme
 import dev.governance.core.GovernanceSnapshot
-import java.util.Locale
 
 /**
- * Debug scaffolding: single screen showing kernel state.
- * Phase 2B replaces this with the polished governance dashboard.
+ * Single Activity hosting Compose Navigation with routes:
+ * /home, /decisions, /permissions, /technical.
+ *
+ * Binds to [GovernanceKernelService] in onStart, exposes snapshot
+ * via Compose state.
  */
 class MainActivity : ComponentActivity() {
 
     private var kernelInterface: AgentKernelInterface? = null
-    private var snapshot: GovernanceSnapshot? by mutableStateOf(null)
+    private var snapshot by mutableStateOf<GovernanceSnapshot?>(null)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             kernelInterface = AgentKernelInterface.Stub.asInterface(service)
             refreshSnapshot()
         }
-
         override fun onServiceDisconnected(name: ComponentName) {
             kernelInterface = null
             snapshot = null
@@ -40,13 +53,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Ensure service is running
         startForegroundService(Intent(this, GovernanceKernelService::class.java))
 
         setContent {
-            MaterialTheme {
-                GovernanceDashboard(
+            OakSparrowTheme {
+                MainNavigation(
                     snapshot = snapshot,
                     onRefresh = { refreshSnapshot() },
                 )
@@ -58,8 +69,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         bindService(
             Intent(this, GovernanceKernelService::class.java),
-            connection,
-            Context.BIND_AUTO_CREATE,
+            connection, Context.BIND_AUTO_CREATE,
         )
     }
 
@@ -69,76 +79,89 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshSnapshot() {
-        try {
-            val parcel = kernelInterface?.snapshot()
-            snapshot = parcel?.toKernel()
-        } catch (_: Exception) {
-            snapshot = null
-        }
+        try { snapshot = kernelInterface?.snapshot()?.toKernel() }
+        catch (_: Exception) { snapshot = null }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GovernanceDashboard(
+private fun MainNavigation(
     snapshot: GovernanceSnapshot?,
     onRefresh: () -> Unit,
 ) {
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-        ) {
-            Text(
-                text = "Governance Kernel",
-                style = MaterialTheme.typography.headlineMedium,
-            )
+    val navController = rememberNavController()
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
 
-            Spacer(modifier = Modifier.height(24.dp))
+    data class NavItem(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+    val items = listOf(
+        NavItem("home", R.string.nav_home, Icons.Filled.Home),
+        NavItem("decisions", R.string.nav_decisions, Icons.Filled.List),
+        NavItem("permissions", R.string.nav_permissions, Icons.Filled.Star),
+        NavItem("technical", R.string.nav_technical, Icons.Filled.Settings),
+    )
 
-            if (snapshot == null) {
-                Text("Connecting to kernel service...")
-            } else {
-                StateCard("Current gamma (\u03b3)", String.format(Locale.ROOT, "%.4f", snapshot.gamma))
-                StateCard(
-                    "Calibrator mode",
-                    if (snapshot.warmupComplete) "Steady" else "Warmup",
-                )
-                StateCard(
-                    "Recent outcomes",
-                    "PASS: ${snapshot.recentOutcomes.pass}  " +
-                        "HOLD: ${snapshot.recentOutcomes.hold}  " +
-                        "VETO: ${snapshot.recentOutcomes.veto}",
-                )
-                StateCard(
-                    "Avg entropy",
-                    String.format(Locale.ROOT, "%.4f", snapshot.recentEntropyAverage),
-                )
-                StateCard(
-                    "Avg divergence",
-                    String.format(Locale.ROOT, "%.4f", snapshot.recentDivergenceAverage),
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text(stringResource(R.string.app_name)) })
+        },
+        bottomBar = {
+            NavigationBar {
+                items.forEach { item ->
+                    NavigationBarItem(
+                        selected = currentRoute == item.route,
+                        onClick = {
+                            navController.navigate(item.route) {
+                                popUpTo("home") { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(item.icon, contentDescription = null) },
+                        label = { Text(stringResource(item.labelRes)) },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        NavHost(navController, startDestination = "home", modifier = Modifier.padding(padding)) {
+            composable("home") {
+                HomeScreen(
+                    snapshot = snapshot,
+                    recentDecisions = PreviewKernelState.recentDecisions,
+                    observationCount = PreviewKernelState.systemEvents.size,
+                    errorCount = 0,
+                    onDecisionTap = { navController.navigate("decisions") },
+                    onSeeDetails = { navController.navigate("technical") },
                 )
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(onClick = onRefresh) {
-                Text("Refresh")
+            composable("decisions") {
+                RecentDecisionsScreen(records = PreviewKernelState.auditRecords)
             }
-        }
-    }
-}
-
-@Composable
-private fun StateCard(label: String, value: String) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(text = label, style = MaterialTheme.typography.labelMedium)
-            Text(text = value, style = MaterialTheme.typography.bodyLarge)
+            composable("permissions") {
+                val apps = remember {
+                    mutableStateListOf(
+                        AppCapability("com.google.android.gm", "Gmail"),
+                        AppCapability("com.instagram.android", "Instagram"),
+                    )
+                }
+                AppPermissionsScreen(
+                    apps = apps,
+                    onUpdate = { updated ->
+                        val idx = apps.indexOfFirst { it.packageName == updated.packageName }
+                        if (idx >= 0) apps[idx] = updated
+                    },
+                )
+            }
+            composable("technical") {
+                TechnicalDetailScreen(
+                    snapshot = snapshot,
+                    records = PreviewKernelState.auditRecords,
+                    systemEvents = PreviewKernelState.systemEvents.map { it.event },
+                    chainVerified = true,
+                    chainProblemTime = null,
+                )
+            }
         }
     }
 }

@@ -24,7 +24,6 @@ import dev.governance.gate.DefaultGovernanceKernel
 import dev.governance.metrics.DefaultDilationFactor
 import dev.governance.metrics.DefaultPredictiveEntropy
 import dev.governance.metrics.DefaultTrajectoryDivergence
-import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -220,10 +219,6 @@ class GovernanceKernelService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val gamma = synchronized(stateLock) { currentState.gamma }
-        // Locale.ROOT: ensure decimal point in notification text
-        val gammaText = String.format(Locale.ROOT, "%.2f", gamma)
-
         val intent = Intent(this, MainActivity::class.java)
         val pending = PendingIntent.getActivity(
             this, 0, intent,
@@ -232,8 +227,8 @@ class GovernanceKernelService : Service() {
 
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text_template, gammaText))
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentText(getString(R.string.notification_text_ambient))
+            .setSmallIcon(R.drawable.ic_shield)
             .setContentIntent(pending)
             .setOngoing(true)
             .build()

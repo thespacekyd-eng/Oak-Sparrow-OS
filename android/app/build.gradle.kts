@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.paparazzi.plugin)
 }
 
 android {
@@ -56,14 +57,19 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
+    implementation(libs.compose.foundation)
+    // Core icons only; extended set has BOM resolution issues
+    // PHASE2C-FOLLOWUP: resolve material-icons-extended dependency for richer icon set
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
+    implementation(libs.navigation.compose)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotest.property)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(project(":testing"))
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
@@ -72,4 +78,45 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+}
+
+// HTML gallery: collects Paparazzi PNGs into a self-contained browseable page
+tasks.register("generateUiGallery") {
+    dependsOn("recordPaparazziDebug")
+    doLast {
+        val snapshotDir = file("build/paparazzi")
+        val galleryDir = file("build/ui-gallery")
+        galleryDir.mkdirs()
+        val imgDir = File(galleryDir, "images")
+        imgDir.mkdirs()
+        val pngs = snapshotDir.walkTopDown().filter { it.extension == "png" }.sortedBy { it.name }.toList()
+        pngs.forEach { it.copyTo(File(imgDir, it.name), overwrite = true) }
+        val html = buildString {
+            appendLine("<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>")
+            appendLine("<title>Oak &amp; Sparrow UI Gallery</title>")
+            appendLine("<style>body{font-family:system-ui;max-width:1200px;margin:0 auto;padding:16px;background:#f5f5f5}")
+            appendLine("h1{text-align:center}h2{margin-top:32px;border-bottom:1px solid #ddd;padding-bottom:8px}")
+            appendLine(".grid{display:flex;flex-wrap:wrap;gap:16px}.card{background:#fff;border-radius:12px;padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.12);max-width:400px}")
+            appendLine(".card img{width:100%;border-radius:8px}.cap{font-size:13px;color:#666;margin-top:6px}</style></head><body>")
+            appendLine("<h1>Oak &amp; Sparrow &mdash; Phase 2B UI Gallery</h1>")
+            val grouped = pngs.groupBy { it.name.substringBefore("_light").substringBefore("_dark").replace(Regex("^\\d+_"), "") }
+            for ((screen, files) in grouped) {
+                appendLine("<h2>${screen.replace('_', ' ').replaceFirstChar { it.uppercase() }}</h2><div class='grid'>")
+                for (f in files) {
+                    val variant = if ("dark" in f.name) "Dark" else "Light"
+                    appendLine("<div class='card'><img src='images/${f.name}' alt='${f.nameWithoutExtension}'><div class='cap'>${f.nameWithoutExtension} &middot; $variant</div></div>")
+                }
+                appendLine("</div>")
+            }
+            appendLine("</body></html>")
+        }
+        File(galleryDir, "index.html").writeText(html)
+        // Zip
+        val zipFile = file("build/ui-gallery.zip")
+        ant.withGroovyBuilder {
+            "zip"("destfile" to zipFile) { "fileset"("dir" to galleryDir) }
+        }
+        println("Gallery: ${galleryDir.absolutePath}/index.html")
+        println("Zip: ${zipFile.absolutePath}")
+    }
 }

@@ -24,6 +24,11 @@
 
         <activity android:name=".MainActivity" android:exported="false" />
 
+        <activity
+            android:name=".AuthorizationActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <service
             android:name=".GovernanceKernelService"
             android:exported="false"
