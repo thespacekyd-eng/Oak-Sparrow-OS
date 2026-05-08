@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Oak &amp; Sparrow</string>
+    <string name="notification_channel_name">Governance Service</string>
+    <string name="notification_channel_description">Shows when the agent governance kernel is active</string>
+    <string name="notification_title">Agent governance active</string>
+    <string name="notification_text_template">Monitoring actions \u00b7 \u03b3 %s</string>
+    <string name="onboarding_title_1">Agent Governance</string>
+    <string name="onboarding_body_1">Oak &amp; Sparrow reviews every action an AI agent proposes on your behalf before it executes. Actions are scored, and risky ones are held for your review.</string>
+    <string name="onboarding_title_2">Accessibility Access</string>
+    <string name="onboarding_body_2">To verify that agent actions actually completed as reported, we need accessibility service access. This lets us confirm outcomes without trusting the agent\'s self-reports.</string>
+    <string name="onboarding_title_3">Overlay Permission</string>
+    <string name="onboarding_body_3">To show governance decisions over other apps, we need overlay permission. This will be used for the trusted status display in a future update.</string>
+    <string name="btn_next">Next</string>
+    <string name="btn_grant_accessibility">Open Accessibility Settings</string>
+    <string name="btn_grant_overlay">Grant Overlay Permission</string>
+    <string name="btn_finish">Get Started</string>
+</resources>

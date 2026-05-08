@@ -1,0 +1,3 @@
+# :adversarial
+
+Synthetic adversarial agents and a redteam test runner. Ships five attack strategies: `GradualEscalation` (timing escalations to γ trends), `CapabilityComposition` (composing low-risk actions into high-risk sequences), `TelemetrySpoofing` (malformed payloads and action kinds), `CalibrationPoisoning` (dragging γ down then attacking), and `OutcomeReversal` (confusing the calibrator with counterintuitive outcomes). `runAdversarial` executes any agent against a kernel for a fixed number of decisions and reports false-PASS counts. The CI assertion: false-PASS must be zero for all agents.

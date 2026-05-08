@@ -1,0 +1,3 @@
+# :core
+
+Interfaces, data types, and value classes for the governance kernel. Contains no logic — only type definitions that all other modules depend on. Public types: `GovernanceState`, `ProposedAction`, `GateDecision`, `GovernanceSnapshot`, `DecisionAttestation`, `AuditRecord`, `ReferenceEnvelope`, `HistoryEntry`, `OutcomeCounts`, `ActionId`, `AuditId`, `Reversibility`, `Outcome`, `ResolvedOutcome`, `CalibratorMode`, `GateMetrics`, and the interfaces `DilationFactor`, `PredictiveEntropy`, `TrajectoryDivergence`, `NoiseSignalDecomposer`, `HardBarrier`, `Calibrator`, `KeyProvider`, `AuditWriter`, `GovernanceKernel`.
