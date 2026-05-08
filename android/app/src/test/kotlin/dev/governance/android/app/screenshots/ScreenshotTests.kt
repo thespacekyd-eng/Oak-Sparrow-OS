@@ -8,6 +8,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Star
+import dev.governance.android.app.HoldConfirmationDialog
 import dev.governance.android.app.ui.PreviewKernelState
 import dev.governance.android.app.ui.screens.*
 import dev.governance.android.app.ui.components.VerifiedBadge
@@ -188,6 +193,166 @@ class ScreenshotTests {
     fun `06_verified_badge_dark`() = paparazzi.snapshot {
         MaterialTheme(colorScheme = darkColorScheme()) {
             VerifiedBadge()
+        }
+    }
+
+    // -- OnboardingPage (individual pages, avoids ActivityResultRegistry requirement) --
+
+    @Test
+    fun `07a_onboarding_intro_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                OnboardingPage(
+                    icon = Icons.Filled.Star,
+                    title = "Agent governance",
+                    body = "Oak & Sparrow reviews every action an AI agent proposes on your behalf before it executes.",
+                    buttonText = "Next",
+                    onAction = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `07a_onboarding_intro_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                OnboardingPage(
+                    icon = Icons.Filled.Star,
+                    title = "Agent governance",
+                    body = "Oak & Sparrow reviews every action an AI agent proposes on your behalf before it executes.",
+                    buttonText = "Next",
+                    onAction = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `07b_onboarding_accessibility_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                OnboardingPage(
+                    icon = Icons.Filled.Person,
+                    title = "Accessibility access",
+                    body = "To verify that agent actions actually completed as reported, we need accessibility service access.",
+                    buttonText = "Open Settings",
+                    onAction = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `07b_onboarding_accessibility_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                OnboardingPage(
+                    icon = Icons.Filled.Person,
+                    title = "Accessibility access",
+                    body = "To verify that agent actions actually completed as reported, we need accessibility service access.",
+                    buttonText = "Open Settings",
+                    onAction = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `07c_onboarding_notifications_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                OnboardingPage(
+                    icon = Icons.Filled.Notifications,
+                    title = "Notifications",
+                    body = "We need notification permission to show you when agent actions need your approval.",
+                    buttonText = "Grant",
+                    onAction = {},
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `07c_onboarding_notifications_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            Surface(Modifier.fillMaxSize()) {
+                OnboardingPage(
+                    icon = Icons.Filled.Notifications,
+                    title = "Notifications",
+                    body = "We need notification permission to show you when agent actions need your approval.",
+                    buttonText = "Grant",
+                    onAction = {},
+                )
+            }
+        }
+    }
+
+    // -- HoldConfirmationDialog --
+
+    @Test
+    fun `08_auth_dialog_reversible_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            val decision = PreviewKernelState.makeDecision(
+                kind = "read_file", outcome = Outcome.HOLD,
+                reversibility = Reversibility.FullyReversible, seq = 0,
+            )
+            HoldConfirmationDialog(decision = decision, onApprove = {}, onSkip = {})
+        }
+    }
+
+    @Test
+    fun `08_auth_dialog_reversible_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            val decision = PreviewKernelState.makeDecision(
+                kind = "read_file", outcome = Outcome.HOLD,
+                reversibility = Reversibility.FullyReversible, seq = 0,
+            )
+            HoldConfirmationDialog(decision = decision, onApprove = {}, onSkip = {})
+        }
+    }
+
+    @Test
+    fun `09_auth_dialog_oneshot_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            val decision = PreviewKernelState.makeDecision(
+                kind = "send_email", outcome = Outcome.HOLD,
+                reversibility = Reversibility.OneShot, seq = 0,
+            )
+            HoldConfirmationDialog(decision = decision, onApprove = {}, onSkip = {})
+        }
+    }
+
+    @Test
+    fun `09_auth_dialog_oneshot_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            val decision = PreviewKernelState.makeDecision(
+                kind = "send_email", outcome = Outcome.HOLD,
+                reversibility = Reversibility.OneShot, seq = 0,
+            )
+            HoldConfirmationDialog(decision = decision, onApprove = {}, onSkip = {})
+        }
+    }
+
+    @Test
+    fun `10_auth_dialog_irreversible_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            val decision = PreviewKernelState.makeDecision(
+                kind = "post_social", outcome = Outcome.HOLD,
+                reversibility = Reversibility.Irreversible, seq = 0,
+            )
+            HoldConfirmationDialog(decision = decision, onApprove = {}, onSkip = {})
+        }
+    }
+
+    @Test
+    fun `10_auth_dialog_irreversible_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            val decision = PreviewKernelState.makeDecision(
+                kind = "post_social", outcome = Outcome.HOLD,
+                reversibility = Reversibility.Irreversible, seq = 0,
+            )
+            HoldConfirmationDialog(decision = decision, onApprove = {}, onSkip = {})
         }
     }
 }

@@ -18,7 +18,8 @@ object PreviewKernelState {
 
     private val keyProvider = EphemeralKeyProvider()
     private val signer = DecisionSigner(keyProvider)
-    private val now = Clock.System.now()
+    // Fixed timestamp for deterministic Paparazzi snapshots (2023-11-14 09:46:40 UTC)
+    private val now = Instant.fromEpochMilliseconds(1_700_000_000_000L)
 
     val snapshot = GovernanceSnapshot(
         gamma = 0.37,

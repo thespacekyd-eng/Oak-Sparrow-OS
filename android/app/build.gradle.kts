@@ -70,6 +70,8 @@ dependencies {
     testImplementation(libs.kotest.property)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(project(":testing"))
+    // JUnit vintage engine: Paparazzi uses JUnit4 @Rule/@Test; vintage bridges them into JUnit Platform
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.10.3")
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
@@ -80,11 +82,17 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
 
+// Wire Paparazzi snapshot verification into the standard check lifecycle
+tasks.named("check") {
+    dependsOn("verifyPaparazziDebug")
+}
+
 // HTML gallery: collects Paparazzi PNGs into a self-contained browseable page
 tasks.register("generateUiGallery") {
     dependsOn("recordPaparazziDebug")
     doLast {
-        val snapshotDir = file("build/paparazzi")
+        // Read from golden snapshots (recorded baselines) for stable gallery
+        val snapshotDir = file("src/test/snapshots/images")
         val galleryDir = file("build/ui-gallery")
         galleryDir.mkdirs()
         val imgDir = File(galleryDir, "images")

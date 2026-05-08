@@ -120,7 +120,7 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun OnboardingPage(
+internal fun OnboardingPage(
     icon: ImageVector,
     title: String,
     body: String,

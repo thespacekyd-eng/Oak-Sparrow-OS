@@ -47,9 +47,14 @@ Verify against baseline:
 ./gradlew :android-app:verifyPaparazziDebug
 ```
 
-Note: Paparazzi uses Android layoutlib which requires Linux or macOS.
-On Windows, recording may fail with native library errors. Screenshots
-are recorded on CI (Linux) and verified locally.
+Golden snapshots live in `src/test/snapshots/images/` (24 PNGs).
+`verifyPaparazziDebug` is wired into `./gradlew check` — any
+visual change fails the build. To update baselines after
+intentional changes (e.g., Phase 2C theme), run
+`recordPaparazziDebug` and commit the updated PNGs.
+
+Paparazzi uses JUnit4; the `junit-vintage-engine` dependency
+bridges it into the JUnit Platform runner alongside Kotest.
 
 ## HTML gallery
 

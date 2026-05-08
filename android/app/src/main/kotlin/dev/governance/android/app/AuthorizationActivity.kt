@@ -67,7 +67,7 @@ class AuthorizationActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HoldConfirmationDialog(
+internal fun HoldConfirmationDialog(
     decision: GateDecision,
     onApprove: () -> Unit,
     onSkip: () -> Unit,
