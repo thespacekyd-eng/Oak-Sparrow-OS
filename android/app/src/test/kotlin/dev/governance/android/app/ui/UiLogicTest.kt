@@ -6,6 +6,10 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotBeEmpty
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.string.shouldEndWith
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
 import kotlin.time.Duration.Companion.hours
 
 /**
@@ -166,6 +170,47 @@ class UiLogicTest : FunSpec({
             val target = ActionTemplates.targetForKind(kind)
             (target.toIntOrNull() == null || target.isEmpty()) shouldBe true
         }
+    }
+
+    // -- RelativeTime --
+
+    test("RelativeTime: just now") {
+        val now = Instant.parse("2026-05-08T14:00:00Z")
+        val ts = Instant.parse("2026-05-08T13:59:30Z")
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldBe "just now"
+    }
+
+    test("RelativeTime: minutes ago") {
+        val now = Instant.parse("2026-05-08T14:00:00Z")
+        val ts = Instant.parse("2026-05-08T13:42:00Z")
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldBe "18m ago"
+    }
+
+    test("RelativeTime: same day HH:MM") {
+        val now = Instant.parse("2026-05-08T20:00:00Z")
+        val ts = Instant.parse("2026-05-08T08:30:00Z")
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldBe "08:30"
+    }
+
+    test("RelativeTime: yesterday") {
+        val now = Instant.parse("2026-05-08T10:00:00Z")
+        val ts = Instant.parse("2026-05-07T21:13:00Z")
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldBe "yesterday 21:13"
+    }
+
+    test("RelativeTime: weekday within 7 days") {
+        // 2026-05-08 is a Friday. 3 days earlier = Tuesday 2026-05-05.
+        val now = Instant.parse("2026-05-08T10:00:00Z")
+        val ts = Instant.parse("2026-05-05T14:08:00Z")
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldStartWith "Tue"
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldEndWith "14:08"
+    }
+
+    test("RelativeTime: older than a week shows month and day") {
+        val now = Instant.parse("2026-05-08T10:00:00Z")
+        val ts = Instant.parse("2026-04-21T14:08:00Z")
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldStartWith "Apr"
+        RelativeTime.format(ts, now, TimeZone.UTC) shouldEndWith "14:08"
     }
 })
 

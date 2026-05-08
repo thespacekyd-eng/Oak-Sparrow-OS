@@ -18,8 +18,7 @@ import dev.governance.android.app.ui.components.VerifiedBadge
 import dev.governance.core.GateDecision
 import dev.governance.core.GovernanceSnapshot
 import dev.governance.core.Outcome
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
+import dev.governance.android.app.ui.RelativeTime
 
 /**
  * Home screen: hero card showing agent health, activity observations,
@@ -123,9 +122,7 @@ fun HomeScreen(
 
         // Recent decisions
         recentDecisions.take(5).forEach { decision ->
-            val time = decision.timestamp
-                .toLocalDateTime(TimeZone.currentSystemDefault())
-                .let { "${it.hour}:%02d".format(it.minute) }
+            val time = RelativeTime.format(decision.timestamp)
             val label = ActionTemplates.pastTenseLabel(decision.actionKind)
             val outcome = ActionTemplates.outcomeLabel(decision.outcome)
 

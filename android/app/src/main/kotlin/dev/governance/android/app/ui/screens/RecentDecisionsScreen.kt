@@ -20,8 +20,7 @@ import dev.governance.android.app.ui.ActionTemplates
 import dev.governance.attestation.AttestationVerifier
 import dev.governance.core.AuditRecord
 import dev.governance.core.Outcome
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
+import dev.governance.android.app.ui.RelativeTime
 
 /**
  * Full audit log viewer. Reverse-chronological list of decisions
@@ -49,9 +48,7 @@ private fun DecisionRow(record: AuditRecord) {
     var verified by remember { mutableStateOf<Boolean?>(null) }
 
     val decision = record.decision
-    val time = decision.timestamp
-        .toLocalDateTime(TimeZone.currentSystemDefault())
-        .let { "%d:%02d".format(it.hour, it.minute) }
+    val time = RelativeTime.format(decision.timestamp)
     val label = ActionTemplates.pastTenseLabel(decision.actionKind)
     val outcome = ActionTemplates.outcomeLabel(decision.outcome)
 
