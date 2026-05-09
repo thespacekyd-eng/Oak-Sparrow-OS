@@ -4,15 +4,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import dev.governance.android.app.agent.AuthorizationResultBridge
 import dev.governance.android.app.ui.ActionTemplates
 import dev.governance.android.app.ui.screens.VerificationFailureScreen
+import dev.governance.android.app.ui.theme.BloomPalette
 import dev.governance.android.app.ui.theme.OakSparrowTheme
 import dev.governance.attestation.AttestationVerifier
 import dev.governance.core.GateDecision
@@ -21,9 +27,12 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 
 /**
- * HOLD confirmation dialog. Displays a plain-English question derived
- * from the action kind, with Skip / Approve buttons and a 14-second
- * auto-deny countdown.
+ * HOLD confirmation dialog. Trusted-display surface with solid
+ * dim scrim and black card — visually distinct from agent-renderable
+ * content.
+ *
+ * Displays a plain-English question derived from the action kind,
+ * with Skip / Approve buttons and a 14-second auto-deny countdown.
  *
  * Launched by the service when a HOLD decision needs user confirmation.
  * The decision is passed as a JSON extra.
@@ -48,10 +57,12 @@ class AuthorizationActivity : ComponentActivity() {
                     HoldConfirmationDialog(
                         decision = decision,
                         onApprove = {
+                            AuthorizationResultBridge.deliverResult(true)
                             setResult(RESULT_OK)
                             finish()
                         },
                         onSkip = {
+                            AuthorizationResultBridge.deliverResult(false)
                             setResult(RESULT_CANCELED)
                             finish()
                         },
@@ -92,19 +103,41 @@ internal fun HoldConfirmationDialog(
     val isIrreversible = decision.reversibility == Reversibility.OneShot ||
         decision.reversibility == Reversibility.Irreversible
 
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)) {
+    // Solid dim scrim — no Bloom backdrop
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.Black.copy(alpha = 0.55f)) {
         Box(contentAlignment = Alignment.Center) {
-            Card(modifier = Modifier.padding(24.dp).widthIn(max = 400.dp)) {
+            // Dark confirmation card
+            Surface(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .widthIn(max = 400.dp),
+                color = Color.Black,
+                contentColor = Color.White,
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.12f)),
+            ) {
                 Column(modifier = Modifier.padding(24.dp)) {
+                    // System header
+                    Text(
+                        "SYSTEM \u00b7 CONFIRM",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = Color.White.copy(alpha = 0.5f),
+                    )
+                    Spacer(Modifier.height(12.dp))
+
                     Text(
                         stringResource(questionResId, target),
                         style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White,
                     )
 
                     Spacer(Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { animatedProgress },
                         modifier = Modifier.fillMaxWidth().height(2.dp),
+                        color = if (isIrreversible) BloomPalette.WarnAmber else BloomPalette.PetalCyan,
+                        trackColor = Color.White.copy(alpha = 0.12f),
                     )
 
                     Spacer(Modifier.height(16.dp))
@@ -113,7 +146,11 @@ internal fun HoldConfirmationDialog(
                         stringResource(R.string.auth_body_irreversible, ActionTemplates.infinitivePhrase(decision.actionKind))
                     else
                         stringResource(R.string.auth_body_template, ActionTemplates.infinitivePhrase(decision.actionKind))
-                    Text(bodyTemplate, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        bodyTemplate,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
 
                     Spacer(Modifier.height(24.dp))
 
@@ -122,11 +159,32 @@ internal fun HoldConfirmationDialog(
                         horizontalArrangement = Arrangement.End,
                     ) {
                         TextButton(onClick = onSkip) {
-                            Text(stringResource(R.string.auth_skip))
+                            Text(
+                                stringResource(R.string.auth_skip),
+                                color = Color.White.copy(alpha = 0.7f),
+                            )
                         }
                         Spacer(Modifier.width(8.dp))
-                        Button(onClick = onApprove) {
-                            Text(stringResource(R.string.auth_approve))
+                        if (isIrreversible) {
+                            Button(
+                                onClick = onApprove,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.White,
+                                    contentColor = Color.Black,
+                                ),
+                            ) {
+                                Text(stringResource(R.string.auth_approve))
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = onApprove,
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                            ) {
+                                Text(
+                                    stringResource(R.string.auth_approve),
+                                    color = Color.White,
+                                )
+                            }
                         }
                     }
 
@@ -137,7 +195,7 @@ internal fun HoldConfirmationDialog(
                             else R.string.auth_verified
                         ),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Color.White.copy(alpha = 0.4f),
                     )
                 }
             }

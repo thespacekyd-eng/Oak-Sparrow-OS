@@ -63,6 +63,28 @@ on the wrapper boundary.
 
 ## Testing
 
+### Per-change gate: `uiCheck` (emulator required)
+
+```bash
+./gradlew :android-app:uiCheck
+```
+
+Runs all instrumented tests (~30) covering onboarding flow,
+foreground service lifecycle, authorization dialog behavior,
+verification failure routing, home screen content, accessibility
+integration, kernel service IPC, audit persistence, and keystore
+continuity. This is the per-change gate — run it after every
+code change.
+
+### Snapshot tests (no emulator needed)
+
+```bash
+./gradlew :android-app:verifyPaparazziDebug
+```
+
+Verifies all screen snapshots against committed golden images.
+Part of `./gradlew check`.
+
 ### JVM tests (no emulator needed)
 
 ```bash
@@ -74,17 +96,10 @@ Tests:
 - `StatePersistence` save/load and corruption recovery
 - `TokenBucket` rate limiter properties (concurrent, exhaustion, refill)
 
-### Instrumentation tests (API 35 emulator required)
+### Manual runbook (release gate only)
 
-```bash
-./gradlew :android-app:connectedAndroidTest
-```
-
-Tests:
-- Service bind lifecycle
-- `decide()` over Binder returns valid signed `GateDecision`
-- `decide()` + `resolve()` round-trip
-- `snapshot()` returns valid `GovernanceSnapshot`
+See `EMULATOR_RUNBOOK.md` for visual judgment checks. Walk
+these before tagging a release, not after individual changes.
 
 ### Kernel tests (unchanged from Phase 1)
 
@@ -115,6 +130,45 @@ affected.
 | `PHASE2B-FOLLOWUP` | `OnboardingActivity` | Polished UI |
 | `PHASE2B-FOLLOWUP` | `MainActivity` | Full governance dashboard |
 | `PHASE2C-FOLLOWUP` | `AccessibilityObservationService` | AppFunctions API integration (Android 16+) |
+
+## Agent setup (on-device LLM)
+
+The chat agent uses MediaPipe LLM Inference with Gemma 2B for
+on-device planning. The model (~1.4 GB) is sideloaded via adb.
+It is NOT bundled in the APK and NOT downloaded over the network.
+
+### Gemma license
+
+Accept the Gemma license terms at https://ai.google.dev/gemma/terms
+before downloading.
+
+### Model sideload
+
+```bash
+adb push gemma-2b-it-gpu-int4.bin /data/local/tmp/
+adb shell run-as dev.governance.android mkdir -p files/models
+adb shell run-as dev.governance.android \
+  cp /data/local/tmp/gemma-2b-it-gpu-int4.bin files/models/
+```
+
+Without the model, the agent falls back to a keyword-based planner
+that recognizes common patterns. The keyword planner is functional
+for demos and development.
+
+### Supported instructions
+
+| Pattern | Action kind | Reversibility |
+|---|---|---|
+| "check my calendar" | `read_calendar` | FullyReversible |
+| "email chen saying..." | `send_email` | OneShot (HOLD) |
+| "share to Instagram" | `share_to_social_app` | FullyReversible |
+| "open Gmail" | `open_app` | FullyReversible |
+
+### Phase 3+1 scope
+
+- AppFunctions API for structured dispatch
+- Session-bounded capability grants
+- More action kinds, smarter multi-step planning
 
 ## Build requirements
 

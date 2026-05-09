@@ -205,4 +205,60 @@ class CompositeGateTest : FunSpec({
         // Verify attestation
         dev.governance.attestation.AttestationVerifier.verify(decision) shouldBe true
     }
+
+    test("warmup mode suppresses threshold-derived VETO to HOLD") {
+        val kernel = buildKernel()
+        // Fresh state: gamma=0.85, decisionsObserved=0 → Warmup mode
+        // OneShot bias = 0.25 → effective gamma = 1.0 ≥ 0.95 → normally VETO
+        val state = Fixtures.defaultState(gamma = 0.85)
+        val action = Fixtures.proposedAction(
+            kind = "send_email",
+            reversibility = Reversibility.OneShot,
+        )
+
+        val decision = kernel.decide(state, action)
+        // Should be HOLD, not VETO — warmup suppression
+        decision.outcome shouldBe Outcome.HOLD
+        decision.rationale.contains("warmup") shouldBe true
+    }
+
+    test("warmup mode still VETOs hard barrier violations") {
+        val kernel = DefaultGovernanceKernel(
+            metrics = GateMetrics(
+                dilationFactor = DefaultDilationFactor(),
+                predictiveEntropy = DefaultPredictiveEntropy(),
+                trajectoryDivergence = DefaultTrajectoryDivergence(),
+            ),
+            barriers = listOf(AlwaysViolatedBarrier()),
+            calibrator = DefensivePriorCalibrator(warmupThreshold = 100),
+            keyProvider = EphemeralKeyProvider(),
+            auditWriter = dev.governance.audit.JsonlAuditWriter(StringWriter()),
+        )
+        // Fresh state → Warmup mode, but barrier is violated
+        val state = Fixtures.defaultState(gamma = 0.1)
+        val action = Fixtures.proposedAction()
+
+        val decision = kernel.decide(state, action)
+        // Hard violation: VETO is NOT suppressed
+        decision.outcome shouldBe Outcome.VETO
+        decision.violatedBarriers shouldBe listOf("always_violated")
+    }
+
+    test("steady mode still VETOs threshold-derived decisions") {
+        val kernel = buildKernel()
+        // 200 decisions observed → Steady mode (past warmup threshold of 100)
+        val state = Fixtures.stateWithHistory(
+            gamma = 0.85,
+            historySize = 10,
+            decisionsObserved = 200,
+        )
+        val action = Fixtures.proposedAction(
+            kind = "send_email",
+            reversibility = Reversibility.OneShot,
+        )
+
+        val decision = kernel.decide(state, action)
+        // Steady mode: VETO should NOT be suppressed
+        decision.outcome shouldBe Outcome.VETO
+    }
 })

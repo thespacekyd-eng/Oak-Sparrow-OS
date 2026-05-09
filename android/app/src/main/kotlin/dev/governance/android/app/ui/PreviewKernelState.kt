@@ -90,6 +90,61 @@ object PreviewKernelState {
         )
     } }
 
+    // -- Chat preview fixtures --
+
+    val chatEmptyMessages: List<dev.governance.android.app.ui.screens.ChatMessage> = emptyList()
+
+    val chatWithPlanMessages: List<dev.governance.android.app.ui.screens.ChatMessage> by lazy {
+        val plan = dev.governance.android.app.agent.Plan(
+            summary = "Send email to chen about being late",
+            steps = listOf(dev.governance.android.app.agent.PlannedStep(
+                kind = "send_email",
+                target = "chen",
+                rationale = "User wants to notify chen",
+                reversibility = Reversibility.OneShot,
+            )),
+        )
+        val log = dev.governance.android.app.agent.ExecutionLog(plan).apply {
+            update(0, dev.governance.android.app.agent.ExecutionLog.StepState.AwaitingApproval)
+        }
+        listOf(
+            dev.governance.android.app.ui.screens.ChatMessage(
+                id = "user-1", role = dev.governance.android.app.ui.screens.ChatRole.USER,
+                text = "email chen saying I'll be late",
+            ),
+            dev.governance.android.app.ui.screens.ChatMessage(
+                id = "plan-1", role = dev.governance.android.app.ui.screens.ChatRole.AGENT,
+                text = plan.summary, plan = plan, executionLog = log,
+            ),
+        )
+    }
+
+    val chatExecutedMessages: List<dev.governance.android.app.ui.screens.ChatMessage> by lazy {
+        val plan = dev.governance.android.app.agent.Plan(
+            summary = "Check calendar",
+            steps = listOf(dev.governance.android.app.agent.PlannedStep(
+                kind = "read_calendar",
+                target = null,
+                rationale = "Check the calendar as requested",
+                reversibility = Reversibility.FullyReversible,
+            )),
+        )
+        val log = dev.governance.android.app.agent.ExecutionLog(plan).apply {
+            update(0, dev.governance.android.app.agent.ExecutionLog.StepState.Done("Opened Calendar app."))
+            markFinished()
+        }
+        listOf(
+            dev.governance.android.app.ui.screens.ChatMessage(
+                id = "user-2", role = dev.governance.android.app.ui.screens.ChatRole.USER,
+                text = "check my calendar",
+            ),
+            dev.governance.android.app.ui.screens.ChatMessage(
+                id = "plan-2", role = dev.governance.android.app.ui.screens.ChatRole.AGENT,
+                text = plan.summary, plan = plan, executionLog = log,
+            ),
+        )
+    }
+
     val systemEvents: List<AuditEntry.SystemEvent> = listOf(
         AuditEntry.SystemEvent(SystemEventRecord(
             timestamp = now - 10.minutes,

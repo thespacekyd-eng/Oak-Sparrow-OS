@@ -86,8 +86,29 @@ class DefaultGovernanceKernel(
             state = state,
         )
 
+        // Warmup suppression: threshold-derived VETO downgrades to HOLD
+        // while the calibrator hasn't observed enough decisions to be
+        // confident. Hard violations (barrier, clock) are unaffected —
+        // barriers produce violatedBarriers entries, and clock anomalies
+        // are handled above before reaching this point. The semantic
+        // split: VETO = "system says no regardless", HOLD = "ask the
+        // user". During warmup, uncertainty should escalate to the user,
+        // not refuse on their behalf.
+        val outcome: Outcome
+        val rationale: String
+        if (result.outcome == Outcome.VETO
+            && calibrator.mode(state) is CalibratorMode.Warmup
+            && result.violatedBarriers.isEmpty()
+        ) {
+            outcome = Outcome.HOLD
+            rationale = result.rationale.replaceFirst("VETO:", "HOLD (warmup):")
+        } else {
+            outcome = result.outcome
+            rationale = result.rationale
+        }
+
         val decision = signer.sign(
-            outcome = result.outcome,
+            outcome = outcome,
             actionId = proposed.id,
             actionKind = proposed.kind,
             gamma = gamma,
@@ -95,7 +116,7 @@ class DefaultGovernanceKernel(
             divergence = divergence,
             reversibility = proposed.reversibility,
             violatedBarriers = result.violatedBarriers,
-            rationale = result.rationale,
+            rationale = rationale,
             timestamp = now,
             sequenceNumber = seq,
         )

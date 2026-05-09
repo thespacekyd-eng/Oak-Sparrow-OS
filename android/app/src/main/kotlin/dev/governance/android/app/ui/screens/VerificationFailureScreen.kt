@@ -10,11 +10,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
+import dev.governance.android.app.ui.theme.BloomPalette
 
 /**
  * Fallback screen when attestation verification fails on any
  * decision-derived surface. Blocks interaction and directs the
  * user to the technical detail screen for diagnosis.
+ *
+ * Uses Material 3 surfaceVariant card with DangerRed brand
+ * accents on icon and headline to signal error distinctly.
  */
 @Composable
 fun VerificationFailureScreen(
@@ -28,7 +32,7 @@ fun VerificationFailureScreen(
         Card(
             modifier = Modifier.padding(32.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer,
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
             ),
         ) {
             Column(
@@ -38,20 +42,20 @@ fun VerificationFailureScreen(
                 Icon(
                     Icons.Filled.Warning,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = BloomPalette.DangerRed,
                     modifier = Modifier.size(48.dp),
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
                     stringResource(R.string.verification_failure_title),
                     style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = BloomPalette.DangerRed,
                 )
                 Spacer(Modifier.height(12.dp))
                 Text(
                     stringResource(R.string.verification_failure_body),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(onClick = onDiagnose) {

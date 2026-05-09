@@ -17,15 +17,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
+import dev.governance.android.app.ui.theme.BloomPalette
 
-/** Small pill showing "Verified" with a check icon. */
+/** Small pill showing "Verified" with a check icon in Bloom trust-green. */
 @Composable
 fun VerifiedBadge(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        color = BloomPalette.TrustGreen.copy(alpha = 0.20f),
+        contentColor = BloomPalette.TrustGreen,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),

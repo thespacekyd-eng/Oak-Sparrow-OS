@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Star
 import dev.governance.android.app.HoldConfirmationDialog
 import dev.governance.android.app.ui.PreviewKernelState
 import dev.governance.android.app.ui.screens.*
+import dev.governance.android.app.ui.screens.ChatScreen
 import dev.governance.android.app.ui.components.VerifiedBadge
 import dev.governance.core.Outcome
 import dev.governance.core.Reversibility
@@ -22,8 +23,12 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Paparazzi screenshot tests for all Phase 2B screens.
+ * Paparazzi screenshot tests for all screens.
  * Each screen is rendered at Pixel 5 size (393x851 dp) in light and dark mode.
+ *
+ * All screens use stock Material 3 surfaces. Brand identity is present
+ * via accent colors only (trust shield icons, verified badge, auth
+ * dialog progress bars).
  *
  * Run: ./gradlew :android-app:recordPaparazziDebug
  * Verify: ./gradlew :android-app:verifyPaparazziDebug
@@ -48,6 +53,7 @@ class ScreenshotTests {
                     errorCount = 0,
                     onDecisionTap = {},
                     onSeeDetails = {},
+                    onChatTap = {},
                 )
             }
         }
@@ -64,6 +70,7 @@ class ScreenshotTests {
                     errorCount = 0,
                     onDecisionTap = {},
                     onSeeDetails = {},
+                    onChatTap = {},
                 )
             }
         }
@@ -193,7 +200,7 @@ class ScreenshotTests {
         }
     }
 
-    // -- OnboardingPage (individual pages, avoids ActivityResultRegistry requirement) --
+    // -- OnboardingPage --
 
     @Test
     fun `07a_onboarding_intro_light`() = paparazzi.snapshot {
@@ -285,7 +292,93 @@ class ScreenshotTests {
         }
     }
 
-    // -- HoldConfirmationDialog --
+    // -- ChatScreen --
+
+    @Test
+    fun `11_chat_empty_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            ChatScreen(
+                messages = PreviewKernelState.chatEmptyMessages,
+                isProcessing = false,
+                modelAvailable = false,
+                inputText = "",
+                onInputChange = {},
+                onSend = {},
+            )
+        }
+    }
+
+    @Test
+    fun `11_chat_empty_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            ChatScreen(
+                messages = PreviewKernelState.chatEmptyMessages,
+                isProcessing = false,
+                modelAvailable = false,
+                inputText = "",
+                onInputChange = {},
+                onSend = {},
+            )
+        }
+    }
+
+    @Test
+    fun `12_chat_with_plan_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            ChatScreen(
+                messages = PreviewKernelState.chatWithPlanMessages,
+                isProcessing = false,
+                modelAvailable = false,
+                inputText = "",
+                onInputChange = {},
+                onSend = {},
+            )
+        }
+    }
+
+    @Test
+    fun `12_chat_with_plan_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            ChatScreen(
+                messages = PreviewKernelState.chatWithPlanMessages,
+                isProcessing = false,
+                modelAvailable = false,
+                inputText = "",
+                onInputChange = {},
+                onSend = {},
+            )
+        }
+    }
+
+    @Test
+    fun `13_chat_executed_light`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = lightColorScheme()) {
+            ChatScreen(
+                messages = PreviewKernelState.chatExecutedMessages,
+                isProcessing = false,
+                modelAvailable = true,
+                inputText = "",
+                onInputChange = {},
+                onSend = {},
+            )
+        }
+    }
+
+    @Test
+    fun `13_chat_executed_dark`() = paparazzi.snapshot {
+        MaterialTheme(colorScheme = darkColorScheme()) {
+            ChatScreen(
+                messages = PreviewKernelState.chatExecutedMessages,
+                isProcessing = false,
+                modelAvailable = true,
+                inputText = "",
+                onInputChange = {},
+                onSend = {},
+            )
+        }
+    }
+
+    // -- HoldConfirmationDialog (dark trusted-display surface) --
 
     @Test
     fun `08_auth_dialog_reversible_light`() = paparazzi.snapshot {

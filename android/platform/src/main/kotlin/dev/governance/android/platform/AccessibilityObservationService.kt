@@ -71,12 +71,14 @@ class AccessibilityObservationService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         // Wire callback from the static locator set by GovernanceKernelService
         outcomeCallback = callbackLocator?.invoke()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        instance = null
         outcomeCallback = null
     }
 
@@ -99,5 +101,63 @@ class AccessibilityObservationService : AccessibilityService() {
          */
         @Volatile
         var callbackLocator: (() -> OutcomeCallback)? = null
+
+        @Volatile
+        private var instance: AccessibilityObservationService? = null
+
+        /**
+         * Finds a clickable element by visible text and clicks it.
+         * Used by the action dispatcher for auto-send in email, etc.
+         * Returns true if a clickable element was found and clicked.
+         */
+        fun clickByText(text: String): Boolean {
+            val service = instance ?: return false
+            val root = service.rootInActiveWindow ?: return false
+            try {
+                val nodes = root.findAccessibilityNodeInfosByText(text)
+                for (node in nodes) {
+                    if (node.isClickable) {
+                        node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+                        return true
+                    }
+                    // Check parent chain for a clickable ancestor
+                    var parent = node.parent
+                    while (parent != null) {
+                        if (parent.isClickable) {
+                            parent.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+                            return true
+                        }
+                        parent = parent.parent
+                    }
+                }
+            } catch (_: Exception) { }
+            return false
+        }
+
+        /**
+         * Reads text content from the current active window.
+         * Returns concatenated text from all text nodes, or null.
+         */
+        fun readCurrentWindowText(): String? {
+            val service = instance ?: return null
+            val root = service.rootInActiveWindow ?: return null
+            val texts = mutableListOf<String>()
+            try {
+                collectText(root, texts, depth = 0)
+            } catch (_: Exception) { }
+            return if (texts.isNotEmpty()) texts.joinToString(" ") else null
+        }
+
+        private fun collectText(
+            node: android.view.accessibility.AccessibilityNodeInfo,
+            out: MutableList<String>,
+            depth: Int,
+        ) {
+            if (depth > 10) return
+            node.text?.toString()?.takeIf { it.isNotBlank() }?.let { out.add(it) }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { collectText(it, out, depth + 1) }
+            }
+        }
     }
 }

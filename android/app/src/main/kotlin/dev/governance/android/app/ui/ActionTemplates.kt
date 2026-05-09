@@ -12,6 +12,8 @@ object ActionTemplates {
     private val templates = mapOf(
         "send_email" to R.string.action_send_email,
         "post_social" to R.string.action_post_social,
+        "share_to_social_app" to R.string.action_share_to_social,
+        "read_calendar" to R.string.action_read_calendar,
         "schedule_event" to R.string.action_schedule_event,
         "delete_file" to R.string.action_delete_file,
         "send_message" to R.string.action_send_message,
@@ -30,6 +32,8 @@ object ActionTemplates {
     fun pastTenseLabel(kind: String): String = when (kind) {
         "send_email" -> "sent email"
         "post_social" -> "posted"
+        "share_to_social_app" -> "shared to app"
+        "read_calendar" -> "read calendar"
         "schedule_event" -> "scheduled event"
         "delete_file" -> "deleted file"
         "send_message" -> "sent message"
@@ -51,6 +55,8 @@ object ActionTemplates {
     fun infinitivePhrase(kind: String): String = when (kind) {
         "send_email" -> "send an email"
         "post_social" -> "post to social media"
+        "share_to_social_app" -> "share to a social app"
+        "read_calendar" -> "check your calendar"
         "schedule_event" -> "schedule an event"
         "delete_file" -> "delete a file"
         "send_message" -> "send a message"
@@ -94,6 +100,8 @@ object ActionTemplates {
     fun targetForKind(kind: String): String = when (kind) {
         "send_email" -> "an email"
         "post_social" -> "social media"
+        "share_to_social_app" -> "a social app"
+        "read_calendar" -> "your calendar"
         "schedule_event" -> "an event"
         "delete_file" -> "a file"
         "send_message" -> "a message"

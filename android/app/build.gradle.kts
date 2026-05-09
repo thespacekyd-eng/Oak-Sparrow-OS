@@ -18,6 +18,11 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "GEMMA_MODEL_URL",
+            "\"https://storage.googleapis.com/mediapipe-models/llm_inference/gemma-2b-it-gpu-int4/float16/1/gemma-2b-it-gpu-int4.bin\"")
+        buildConfigField("String", "GEMMA_MODEL_FILENAME",
+            "\"gemma-2b-it-gpu-int4.bin\"")
     }
 
     compileOptions {
@@ -64,6 +69,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
+    implementation(libs.mediapipe.llm.inference)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.kotest.runner.junit5)
@@ -76,7 +82,14 @@ dependencies {
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(libs.kotest.assertions.core)
+}
+
+tasks.register("uiCheck") {
+    group = "verification"
+    description = "Runs all instrumented UI tests against a connected emulator/device."
+    dependsOn("connectedDebugAndroidTest")
 }
 
 tasks.withType<Test>().configureEach {

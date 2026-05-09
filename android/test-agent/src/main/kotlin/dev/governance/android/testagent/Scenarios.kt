@@ -88,7 +88,7 @@ object Scenarios {
 
     private fun buildAction(id: String, kind: String, reversibility: String): String {
         val obj = buildJsonObject {
-            put("id", buildJsonObject { put("value", JsonPrimitive(id)) })
+            put("id", JsonPrimitive(id))
             put("kind", JsonPrimitive(kind))
             put("reversibility", JsonPrimitive(reversibility))
             put("payload", buildJsonObject {})

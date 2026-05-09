@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
 import dev.governance.android.app.ui.ActionTemplates
 import dev.governance.android.app.ui.components.VerifiedBadge
+import dev.governance.android.app.ui.theme.BloomPalette
 import dev.governance.android.app.BuildConfig
 import dev.governance.core.GateDecision
 import dev.governance.core.GovernanceSnapshot
@@ -23,7 +24,8 @@ import dev.governance.android.app.ui.RelativeTime
 
 /**
  * Home screen: hero card showing agent health, activity observations,
- * and last 5 decisions in plain English.
+ * and last 5 decisions in plain English. Stock Material 3 surfaces
+ * with brand accent colors on trust-state indicators.
  */
 @Composable
 fun HomeScreen(
@@ -33,6 +35,7 @@ fun HomeScreen(
     errorCount: Int,
     onDecisionTap: (GateDecision) -> Unit,
     onSeeDetails: () -> Unit,
+    onChatTap: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -65,7 +68,7 @@ fun HomeScreen(
                 containerColor = if (needsAttention)
                     MaterialTheme.colorScheme.errorContainer
                 else
-                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.surfaceVariant,
             ),
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
@@ -131,7 +134,28 @@ fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+
+        // Chat entry point
+        onChatTap?.let { onTap ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTap() },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                ),
+            ) {
+                Text(
+                    "Ask your agent...",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
         Text(
             stringResource(R.string.home_recent_activity),
             style = MaterialTheme.typography.titleMedium,
@@ -154,9 +178,9 @@ fun HomeScreen(
                         Icons.Filled.CheckCircle,
                         contentDescription = null,
                         tint = when (decision.outcome) {
-                            Outcome.PASS -> MaterialTheme.colorScheme.primary
-                            Outcome.HOLD -> MaterialTheme.colorScheme.tertiary
-                            Outcome.VETO -> MaterialTheme.colorScheme.error
+                            Outcome.PASS -> BloomPalette.TrustGreen
+                            Outcome.HOLD -> BloomPalette.WarnAmber
+                            Outcome.VETO -> BloomPalette.DangerRed
                         },
                         modifier = Modifier.size(18.dp),
                     )

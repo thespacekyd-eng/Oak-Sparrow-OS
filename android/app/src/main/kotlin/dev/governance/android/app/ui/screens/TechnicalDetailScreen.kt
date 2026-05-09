@@ -196,7 +196,6 @@ private fun SystemEventRow(event: SystemEventRecord) {
         SystemEventRecord.Severity.WARN -> Color(0xFFFF9800)
         SystemEventRecord.Severity.ERROR -> MaterialTheme.colorScheme.error
     }
-    // Stacked: timestamp + kind on line 1, message on line 2
     Column(modifier = Modifier.padding(vertical = 4.dp)) {
         Row {
             Text(time, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)

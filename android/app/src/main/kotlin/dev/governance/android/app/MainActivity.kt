@@ -23,14 +23,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import dev.governance.android.app.agent.*
 import dev.governance.android.app.ui.PreviewKernelState
 import dev.governance.android.app.ui.screens.*
 import dev.governance.android.app.ui.theme.OakSparrowTheme
 import dev.governance.core.GovernanceSnapshot
+import kotlinx.coroutines.launch
 
 /**
  * Single Activity hosting Compose Navigation with routes:
- * /home, /decisions, /permissions, /technical.
+ * /home, /decisions, /permissions, /technical, /chat.
  *
  * Binds to [GovernanceKernelService] in onStart, exposes snapshot
  * via Compose state.
@@ -60,6 +62,8 @@ class MainActivity : ComponentActivity() {
                 MainNavigation(
                     snapshot = snapshot,
                     onRefresh = { refreshSnapshot() },
+                    kernelInterface = kernelInterface,
+                    context = this,
                 )
             }
         }
@@ -89,9 +93,19 @@ class MainActivity : ComponentActivity() {
 private fun MainNavigation(
     snapshot: GovernanceSnapshot?,
     onRefresh: () -> Unit,
+    kernelInterface: AgentKernelInterface?,
+    context: android.content.Context,
 ) {
     val navController = rememberNavController()
     val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+
+    // Chat state
+    val messages = remember { mutableStateListOf<ChatMessage>() }
+    var chatInput by remember { mutableStateOf("") }
+    var isProcessing by remember { mutableStateOf(false) }
+    val planner = remember { Planner(context) }
+    val dispatcher = remember { ActionDispatcher(context) }
+    val scope = rememberCoroutineScope()
 
     data class NavItem(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
     val items = listOf(
@@ -106,20 +120,22 @@ private fun MainNavigation(
             TopAppBar(title = { Text(stringResource(R.string.app_name)) })
         },
         bottomBar = {
-            NavigationBar {
-                items.forEach { item ->
-                    NavigationBarItem(
-                        selected = currentRoute == item.route,
-                        onClick = {
-                            navController.navigate(item.route) {
-                                popUpTo("home") { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(item.icon, contentDescription = null) },
-                        label = { Text(stringResource(item.labelRes)) },
-                    )
+            if (currentRoute != "chat") {
+                NavigationBar {
+                    items.forEach { item ->
+                        NavigationBarItem(
+                            selected = currentRoute == item.route,
+                            onClick = {
+                                navController.navigate(item.route) {
+                                    popUpTo("home") { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(item.icon, contentDescription = null) },
+                            label = { Text(stringResource(item.labelRes)) },
+                        )
+                    }
                 }
             }
         },
@@ -133,6 +149,7 @@ private fun MainNavigation(
                     errorCount = 0,
                     onDecisionTap = { navController.navigate("decisions") },
                     onSeeDetails = { navController.navigate("technical") },
+                    onChatTap = { navController.navigate("chat") },
                 )
             }
             composable("decisions") {
@@ -160,6 +177,68 @@ private fun MainNavigation(
                     systemEvents = PreviewKernelState.systemEvents.map { it.event },
                     chainVerified = true,
                     chainProblemTime = null,
+                )
+            }
+            composable("chat") {
+                ChatScreen(
+                    messages = messages,
+                    isProcessing = isProcessing,
+                    modelAvailable = planner.isModelAvailable(),
+                    inputText = chatInput,
+                    onInputChange = { chatInput = it },
+                    onSend = {
+                        val instruction = chatInput.trim()
+                        if (instruction.isBlank() || isProcessing) return@ChatScreen
+                        chatInput = ""
+
+                        val userMsg = ChatMessage(
+                            id = "user-${System.nanoTime()}",
+                            role = ChatRole.USER,
+                            text = instruction,
+                        )
+                        messages.add(userMsg)
+
+                        val ki = kernelInterface
+                        if (ki == null) {
+                            messages.add(ChatMessage(
+                                id = "err-${System.nanoTime()}",
+                                role = ChatRole.SYSTEM,
+                                text = "Not connected to governance service.",
+                            ))
+                            return@ChatScreen
+                        }
+
+                        scope.launch {
+                            isProcessing = true
+                            // Load model if needed (first time only)
+                            if (planner.isModelAvailable()) {
+                                planner.loadModel()
+                            }
+
+                            val orchestrator = AgentOrchestrator(context, planner, ki, dispatcher)
+                            val (planResult, log) = orchestrator.execute(instruction)
+
+                            when (planResult) {
+                                is PlanResult.Success -> {
+                                    messages.add(ChatMessage(
+                                        id = "plan-${System.nanoTime()}",
+                                        role = ChatRole.AGENT,
+                                        text = planResult.plan.summary,
+                                        plan = planResult.plan,
+                                        executionLog = log,
+                                    ))
+                                }
+                                is PlanResult.Error -> {
+                                    messages.add(ChatMessage(
+                                        id = "err-${System.nanoTime()}",
+                                        role = ChatRole.AGENT,
+                                        text = planResult.message,
+                                    ))
+                                }
+                            }
+                            isProcessing = false
+                        }
+                    },
                 )
             }
         }
