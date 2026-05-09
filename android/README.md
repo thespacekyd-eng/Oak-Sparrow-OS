@@ -123,7 +123,25 @@ affected.
 - Gradle 8.10+ with wrapper
 - For instrumentation tests: Android emulator (API 35)
 
+## Build modes
+
+| Mode | Signing | Verification | EC fallback |
+|------|---------|--------------|-------------|
+| **Debug** | Ed25519 (Keystore) or ECDSA P-256 (software fallback) | Algorithm-agile: accepts both Ed25519 and P-256 | Allowed — logs warning, shows banner in UI |
+| **Release** | Ed25519 (Keystore) only | Algorithm-agile (same verifier) | **Crashes on launch** with `IllegalStateException` |
+
+Debug builds allow the software ECDSA P-256 fallback so the full
+integration (service, IPC, UI, audit) can be exercised on emulators
+that lack Ed25519 Keystore support. The home screen shows a warning
+banner and the Technical Detail screen renders the signing algorithm
+in error color when using the fallback.
+
+Release builds require hardware Ed25519. If the device cannot produce
+Ed25519 keys, the service crashes on first launch with a clear message.
+To run a release-build APK on an emulator, use a system image that
+supports Ed25519 in Keystore (API 35+ with Google APIs on x86_64).
+
 ## Supported devices
 
 - **minSdk = 33** (Android 13). Android Keystore Ed25519 requires
-  API 33+, and dual-path crypto is rejected for trust chain simplicity.
+  API 33+.

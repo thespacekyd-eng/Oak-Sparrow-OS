@@ -86,6 +86,13 @@ fun TechnicalDetailScreen(
                             else stringResource(R.string.technical_warmup))
                         MonoRow(stringResource(R.string.technical_current_gamma),
                             String.format(Locale.ROOT, "%.2f", snapshot.gamma))
+                        MonoRow(
+                            "Signing algorithm",
+                            snapshot.signingAlgorithm,
+                            valueColor = if (snapshot.signingAlgorithm != "Ed25519")
+                                MaterialTheme.colorScheme.error
+                            else null,
+                        )
                         // Envelope: stacked vertically because the description is long
                         Text(stringResource(R.string.technical_envelope),
                             style = MaterialTheme.typography.bodySmall,
@@ -204,7 +211,7 @@ private fun SystemEventRow(event: SystemEventRecord) {
 }
 
 @Composable
-private fun MonoRow(label: String, value: String) {
+private fun MonoRow(label: String, value: String, valueColor: Color? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -212,7 +219,12 @@ private fun MonoRow(label: String, value: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(label, style = MaterialTheme.typography.bodySmall)
-        Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = valueColor ?: Color.Unspecified,
+        )
     }
 }
 

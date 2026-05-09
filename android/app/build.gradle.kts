@@ -32,6 +32,7 @@ android {
     buildFeatures {
         compose = true
         aidl = true
+        buildConfig = true
     }
 }
 
@@ -85,6 +86,133 @@ tasks.withType<Test>().configureEach {
 // Wire Paparazzi snapshot verification into the standard check lifecycle
 tasks.named("check") {
     dependsOn("verifyPaparazziDebug")
+}
+
+// Evidence capture: bundles connectedAndroidTest reports, screenshots, and audit log
+tasks.register("captureEmulatorArtifacts") {
+    group = "verification"
+    description = "Bundles connectedAndroidTest reports, screenshots, " +
+        "and audit log into an evidence directory for review."
+
+    doLast {
+        val evidenceDir = file("build/emulator-evidence")
+        evidenceDir.deleteRecursively()
+        evidenceDir.mkdirs()
+
+        // Copy connectedAndroidTest reports if they exist
+        val testReportDir = file("build/reports/androidTests/connected/debug")
+        if (testReportDir.exists()) {
+            testReportDir.copyRecursively(File(evidenceDir, "tests-report"), overwrite = true)
+        } else {
+            File(evidenceDir, "tests-report-missing.txt").writeText(
+                "connectedAndroidTest has not been run. " +
+                "Run: ./gradlew :android-app:connectedAndroidTest"
+            )
+        }
+
+        // Placeholder for manual screenshots from runbook
+        val screenshotDir = File(evidenceDir, "screenshots")
+        screenshotDir.mkdirs()
+        File(screenshotDir, "README.md").writeText("""
+            Place screenshots from the manual runbook checks here.
+
+            Recommended naming:
+            - 01_onboarding.png
+            - 02_accessibility_settings.png
+            - 03_foreground_notification.png
+            - ... (one per runbook check)
+
+            Capture from emulator:
+              adb shell screencap -p /sdcard/screen.png
+              adb pull /sdcard/screen.png ./NN_check_name.png
+        """.trimIndent())
+
+        // Pull audit log from device if adb is available
+        val adbExec = System.getenv("ANDROID_HOME")?.let {
+            file("$it/platform-tools/adb")
+        }
+        val auditDir = File(evidenceDir, "audit")
+        auditDir.mkdirs()
+        if (adbExec?.exists() == true) {
+            try {
+                exec {
+                    commandLine(
+                        adbExec.absolutePath, "shell",
+                        "run-as", "dev.governance.android",
+                        "cat", "/data/data/dev.governance.android/files/audit/audit_active.jsonl.enc"
+                    )
+                    standardOutput = File(auditDir, "audit_active.jsonl.enc").outputStream()
+                    isIgnoreExitValue = true
+                }
+            } catch (e: Exception) {
+                File(auditDir, "audit-pull-failed.txt").writeText(
+                    "Failed to pull audit log: ${e.message}\n\n" +
+                    "Manual command:\n" +
+                    "  adb shell run-as dev.governance.android cat " +
+                    "/data/data/dev.governance.android/files/audit/audit_active.jsonl.enc " +
+                    "> audit_active.jsonl.enc"
+                )
+            }
+        } else {
+            File(auditDir, "adb-not-found.txt").writeText(
+                "ANDROID_HOME not set or adb not found. Set ANDROID_HOME and rerun, " +
+                "or pull the audit log manually."
+            )
+        }
+
+        // Runbook results scaffold
+        File(evidenceDir, "runbook-results.md").writeText("""
+            # Runbook Results
+
+            Fill this in as you walk through android/EMULATOR_RUNBOOK.md.
+
+            ## Check 1 — Fresh install and onboarding
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 2 — Accessibility service enable
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 3 — Foreground notification
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 4 — Kernel snapshot in HomeScreen
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 5 — HOLD dialog appears
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 6 — VerificationFailureScreen renders for tampered payload
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 7 — Technical Detail shows real gamma trajectory
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 8 — App Permissions persist across restart
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 9 — Audit log inspection
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Check 10 — Process death recovery
+            **Result:** [ ] pass [ ] fail
+            **Notes:**
+
+            ## Summary
+            **Passes:** N / 10
+            **Blockers found:**
+        """.trimIndent())
+
+        println("Evidence directory: ${evidenceDir.absolutePath}")
+    }
 }
 
 // HTML gallery: collects Paparazzi PNGs into a self-contained browseable page

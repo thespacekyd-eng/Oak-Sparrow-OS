@@ -24,3 +24,7 @@ project(":android-platform").projectDir = file("android/platform")
 
 include(":android-app")
 project(":android-app").projectDir = file("android/app")
+
+// Phase 2D — Test agent (debug-only, not for release)
+include(":android-test-agent")
+project(":android-test-agent").projectDir = file("android/test-agent")

@@ -22,7 +22,7 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".MainActivity" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="true" />
 
         <activity
             android:name=".AuthorizationActivity"
@@ -31,7 +31,7 @@
 
         <service
             android:name=".GovernanceKernelService"
-            android:exported="false"
+            android:exported="true"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

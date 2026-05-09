@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
 import dev.governance.android.app.ui.ActionTemplates
 import dev.governance.android.app.ui.components.VerifiedBadge
+import dev.governance.android.app.BuildConfig
 import dev.governance.core.GateDecision
 import dev.governance.core.GovernanceSnapshot
 import dev.governance.core.Outcome
@@ -39,6 +40,23 @@ fun HomeScreen(
             .fillMaxSize()
             .padding(16.dp),
     ) {
+        // Debug-only banner when not using Ed25519
+        if (BuildConfig.DEBUG && snapshot != null && snapshot.signingAlgorithm != "Ed25519") {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(
+                    "Debug build \u2014 using software ${snapshot.signingAlgorithm}. Not for production.",
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         // Hero card
         val needsAttention = snapshot != null && (snapshot.gamma > 0.6 || errorCount > 0)
         Card(
@@ -121,7 +139,7 @@ fun HomeScreen(
         Spacer(Modifier.height(8.dp))
 
         // Recent decisions
-        recentDecisions.take(5).forEach { decision ->
+        recentDecisions.sortedByDescending { it.timestamp }.take(5).forEach { decision ->
             val time = RelativeTime.format(decision.timestamp)
             val label = ActionTemplates.pastTenseLabel(decision.actionKind)
             val outcome = ActionTemplates.outcomeLabel(decision.outcome)

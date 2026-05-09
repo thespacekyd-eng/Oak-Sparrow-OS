@@ -161,6 +161,7 @@ class DefaultGovernanceKernel(
             referenceEnvelopeDescription = state.referenceEnvelope.description,
             warmupComplete = calibrator.mode(state) is CalibratorMode.Steady,
             timestamp = state.timestamp,
+            signingAlgorithm = keyProvider.algorithmLabel(),
         )
     }
 }

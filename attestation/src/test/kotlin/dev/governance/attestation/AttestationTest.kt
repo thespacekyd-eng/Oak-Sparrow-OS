@@ -130,6 +130,58 @@ class AttestationTest : FunSpec({
         decision1.auditId shouldBe decision2.auditId
     }
 
+    test("ECDSA P-256 sign and verify round-trip") {
+        val keyProvider = EcTestKeyProvider()
+        val signer = DecisionSigner(keyProvider)
+
+        val decision = signer.sign(
+            outcome = Outcome.PASS,
+            actionId = ActionId("ec-test-1"),
+            actionKind = "read_file",
+            gamma = 0.3,
+            entropy = 0.2,
+            divergence = 0.1,
+            reversibility = Reversibility.FullyReversible,
+            violatedBarriers = emptyList(),
+            rationale = "PASS: all clear (EC P-256)",
+            timestamp = Clock.System.now(),
+            sequenceNumber = 0L,
+        )
+
+        AttestationVerifier.verify(decision) shouldBe true
+    }
+
+    test("ECDSA P-256 tampered signature fails verification") {
+        val keyProvider = EcTestKeyProvider()
+        val signer = DecisionSigner(keyProvider)
+
+        val decision = signer.sign(
+            outcome = Outcome.PASS,
+            actionId = ActionId("ec-test-tamper"),
+            actionKind = "read_file",
+            gamma = 0.3,
+            entropy = 0.2,
+            divergence = 0.1,
+            reversibility = Reversibility.FullyReversible,
+            violatedBarriers = emptyList(),
+            rationale = "PASS: testing tamper detection (EC P-256)",
+            timestamp = Clock.System.now(),
+            sequenceNumber = 0L,
+        )
+
+        val sig = decision.attestation.signature
+        val tamperedSig = sig.toCharArray().also {
+            val mid = it.size / 2
+            it[mid] = if (it[mid] == 'a') 'b' else 'a'
+        }.concatToString()
+
+        val tampered = decision.copy(
+            attestation = decision.attestation.copy(signature = tamperedSig)
+        )
+
+        AttestationVerifier.verify(tampered) shouldBe false
+    }
+
     test("content hash changes with any field change - property test") {
         val keyProvider = EphemeralKeyProvider()
         val signer = DecisionSigner(keyProvider)

@@ -104,11 +104,15 @@ interface Calibrator {
  * Phase 2 plugs in the Android Keystore.
  */
 interface KeyProvider {
-    /** The Ed25519 public key in X.509 SubjectPublicKeyInfo encoding. */
+    /** The public key in X.509 SubjectPublicKeyInfo encoding. */
     fun publicKey(): ByteArray
 
-    /** Sign [message] with the private key. Returns an Ed25519 signature. */
+    /** Sign [message] with the private key. */
     fun sign(message: ByteArray): ByteArray
+
+    /** Identifier for the algorithm this provider uses. Used by the UI
+     *  to surface degraded-crypto warnings on debug builds. */
+    fun algorithmLabel(): String = "Ed25519"
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import dev.governance.android.app.BuildConfig
 import dev.governance.android.platform.AccessibilityObservationService
 import dev.governance.android.platform.AndroidJsonlAuditWriter
 import dev.governance.android.platform.AndroidKeystoreKeyProvider
@@ -83,6 +84,21 @@ class GovernanceKernelService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+
+        // startForeground() MUST be called before any slow initialization
+        // (Keystore, audit writer) to avoid ANR on startForegroundService().
+        createNotificationChannel()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
+
+        // Now safe to do slow initialization
         persistence = StatePersistence(this)
         auditWriter = AndroidJsonlAuditWriter(this)
 
@@ -95,7 +111,24 @@ class GovernanceKernelService : Service() {
             ),
             barriers = emptyList(),
             calibrator = calibrator,
-            keyProvider = AndroidKeystoreKeyProvider(),
+            keyProvider = try {
+                AndroidKeystoreKeyProvider()
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.w(
+                        "GovernanceKernel",
+                        "Keystore Ed25519 unavailable, using debug software EC fallback",
+                        e,
+                    )
+                    dev.governance.android.platform.SoftwareEcKeyProvider()
+                } else {
+                    throw IllegalStateException(
+                        "Ed25519 Keystore signing unavailable on this device. " +
+                        "Production builds require hardware Ed25519 support.",
+                        e,
+                    )
+                }
+            },
             auditWriter = auditWriter,
             clock = SystemClockAdapter(),
         )
@@ -109,24 +142,14 @@ class GovernanceKernelService : Service() {
             logSystemEvent("boot", "fresh defensive-prior state initialized")
         }
 
-        createNotificationChannel()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, buildNotification())
-        }
-        // PHASE2B-FOLLOWUP: instrumentation test on API 34+ emulator verifying
-        // service starts without MissingForegroundServiceTypeException
-
         // Wire accessibility observation callback via static locator
         AccessibilityObservationService.callbackLocator = { createObservationCallback() }
     }
 
-    override fun onBind(intent: Intent?): IBinder = rateLimitedBinder
+    override fun onBind(intent: Intent?): IBinder {
+        android.util.Log.i("GovernanceKernel", "onBind called from ${intent?.component}")
+        return rateLimitedBinder
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY

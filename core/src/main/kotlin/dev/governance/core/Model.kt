@@ -148,6 +148,7 @@ data class GovernanceSnapshot(
     val referenceEnvelopeDescription: String,
     val warmupComplete: Boolean,
     val timestamp: Instant,
+    val signingAlgorithm: String = "Ed25519",
 ) {
     init {
         require(gamma in 0.0..1.0) { "gamma must be in [0, 1], got $gamma" }
