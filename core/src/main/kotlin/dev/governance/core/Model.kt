@@ -123,6 +123,10 @@ data class GateDecision(
     val attestation: DecisionAttestation,
     val timestamp: Instant,
     val sequenceNumber: Long,
+    /** Cost-based risk weight applied to this action. 1.0 = baseline. */
+    val riskWeight: Double = 1.0,
+    /** Normalized distance from each decision threshold at decision time. */
+    val margins: SafetyMargin = SafetyMargin.SAFE,
 )
 
 /** Outcome counts over a recent time window, for the agent-facing snapshot. */

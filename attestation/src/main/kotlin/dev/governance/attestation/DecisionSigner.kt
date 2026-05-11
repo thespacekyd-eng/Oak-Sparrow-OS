@@ -53,7 +53,12 @@ class DecisionSigner(private val keyProvider: KeyProvider) {
         rationale: String,
         timestamp: Instant,
         sequenceNumber: Long,
+        riskWeight: Double = 1.0,
+        margins: SafetyMargin = SafetyMargin.SAFE,
     ): GateDecision {
+        // PreDecision is the signed content — riskWeight and margins are
+        // excluded because they are derived from the signed values and
+        // gate constants. Anyone can recompute them.
         val preDecision = PreDecision(
             outcome = outcome,
             actionId = actionId,
@@ -93,6 +98,8 @@ class DecisionSigner(private val keyProvider: KeyProvider) {
             attestation = attestation,
             timestamp = timestamp,
             sequenceNumber = sequenceNumber,
+            riskWeight = riskWeight,
+            margins = margins,
         )
     }
 }

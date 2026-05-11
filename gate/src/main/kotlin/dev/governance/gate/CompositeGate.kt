@@ -52,6 +52,9 @@ object CompositeGate {
     private const val DIVERGENCE_HOLD_THRESHOLD = 0.7
     private const val SOFT_METRIC_GAMMA_FLOOR = 0.1
 
+    /** How strongly action cost influences the gamma bias. */
+    private const val COST_SENSITIVITY = 0.05
+
     fun evaluate(
         gamma: Double,
         entropy: Double,
@@ -62,6 +65,26 @@ object CompositeGate {
         state: GovernanceState,
     ): GateResult {
         val violatedBarriers = barriers.filter { it.violated(action, state) }
+        val riskWt = ActionCostRegistry.impactWeight(action.kind)
+
+        // Compute bias and effective gamma upfront (needed for margins on all paths)
+        val reversibilityBias = REVERSIBILITY_BIAS[reversibility] ?: 0.0
+        val costBias = ActionCostRegistry.costBias(action.kind, COST_SENSITIVITY)
+        val totalBias = reversibilityBias + costBias
+        val effectiveGamma = if (reversibility == Reversibility.Irreversible) {
+            1.0
+        } else {
+            (gamma + totalBias).coerceIn(0.0, 1.0)
+        }
+        val margins = SafetyMargin.compute(
+            effectiveGamma = effectiveGamma,
+            entropy = entropy,
+            divergence = divergence,
+            vetoThreshold = VETO_THRESHOLD,
+            holdThreshold = HOLD_THRESHOLD,
+            entropyThreshold = ENTROPY_HOLD_THRESHOLD,
+            divergenceThreshold = DIVERGENCE_HOLD_THRESHOLD,
+        )
 
         // Rule 1: Hard barrier violation → VETO
         if (violatedBarriers.isNotEmpty()) {
@@ -69,6 +92,8 @@ object CompositeGate {
                 outcome = Outcome.VETO,
                 violatedBarriers = violatedBarriers.map { it.name },
                 rationale = "VETO: hard barrier(s) violated: ${violatedBarriers.joinToString { it.name }}",
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
 
@@ -78,36 +103,34 @@ object CompositeGate {
                 outcome = Outcome.HOLD,
                 violatedBarriers = emptyList(),
                 rationale = "HOLD: irreversible action requires explicit confirmation (not available in Phase 1)",
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
 
         // Rule 2b: RootSystem tier → always HOLD regardless of γ or warmup.
-        // Privileged operations (shell exec, package install, settings put,
-        // network control, file system write) require explicit user approval
-        // every time. The dispatcher additionally requires system-UID placement
-        // before any privileged operation actually executes.
         val tier = ActionTier.classify(action.kind)
         if (tier == ActionTier.RootSystem) {
             return GateResult(
                 outcome = Outcome.HOLD,
                 violatedBarriers = emptyList(),
                 rationale = "HOLD: root-tier action '${action.kind}' requires explicit user approval",
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
-
-        val bias = REVERSIBILITY_BIAS[reversibility] ?: 0.0
-        val effectiveGamma = (gamma + bias).coerceIn(0.0, 1.0)
 
         // Rule 3: Extreme scrutiny → VETO
         if (effectiveGamma >= VETO_THRESHOLD) {
             return GateResult(
                 outcome = Outcome.VETO,
                 violatedBarriers = emptyList(),
-                // Locale.ROOT: decimal separator must be '.' for log parseability
                 rationale = String.format(Locale.ROOT,
-                    "VETO: effective gamma %.3f >= %.3f threshold (gamma=%.3f, bias=%.3f for %s)",
-                    effectiveGamma, VETO_THRESHOLD, gamma, bias, reversibility
+                    "VETO: effective gamma %.3f >= %.3f threshold (gamma=%.3f, bias=%.3f [rev=%.2f + cost=%.3f] for %s)",
+                    effectiveGamma, VETO_THRESHOLD, gamma, totalBias, reversibilityBias, costBias, reversibility
                 ),
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
 
@@ -120,12 +143,13 @@ object CompositeGate {
             return GateResult(
                 outcome = Outcome.HOLD,
                 violatedBarriers = emptyList(),
-                // Locale.ROOT: decimal separator must be '.' for log parseability
                 rationale = String.format(Locale.ROOT,
-                    "HOLD: effective gamma %.3f >= %.3f threshold (gamma=%.3f, bias=%.3f for %s%s)",
-                    effectiveGamma, holdThreshold, gamma, bias, reversibility,
+                    "HOLD: effective gamma %.3f >= %.3f threshold (gamma=%.3f, bias=%.3f [rev=%.2f + cost=%.3f] for %s%s)",
+                    effectiveGamma, holdThreshold, gamma, totalBias, reversibilityBias, costBias, reversibility,
                     if (previousWasHold) ", sticky from previous HOLD" else "",
                 ),
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
 
@@ -134,11 +158,12 @@ object CompositeGate {
             return GateResult(
                 outcome = Outcome.HOLD,
                 violatedBarriers = emptyList(),
-                // Locale.ROOT: decimal separator must be '.' for log parseability
                 rationale = String.format(Locale.ROOT,
                     "HOLD: high entropy %.3f > %.3f with effective gamma %.3f >= %.3f",
                     entropy, ENTROPY_HOLD_THRESHOLD, effectiveGamma, SOFT_METRIC_GAMMA_FLOOR
                 ),
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
 
@@ -147,11 +172,12 @@ object CompositeGate {
             return GateResult(
                 outcome = Outcome.HOLD,
                 violatedBarriers = emptyList(),
-                // Locale.ROOT: decimal separator must be '.' for log parseability
                 rationale = String.format(Locale.ROOT,
                     "HOLD: high divergence %.3f > %.3f with effective gamma %.3f >= %.3f",
                     divergence, DIVERGENCE_HOLD_THRESHOLD, effectiveGamma, SOFT_METRIC_GAMMA_FLOOR
                 ),
+                riskWeight = riskWt,
+                margins = margins,
             )
         }
 
@@ -159,11 +185,12 @@ object CompositeGate {
         return GateResult(
             outcome = Outcome.PASS,
             violatedBarriers = emptyList(),
-            // Locale.ROOT: decimal separator must be '.' for log parseability
             rationale = String.format(Locale.ROOT,
                 "PASS: effective gamma %.3f below thresholds, entropy=%.3f, divergence=%.3f (%s)",
                 effectiveGamma, entropy, divergence, reversibility
             ),
+            riskWeight = riskWt,
+            margins = margins,
         )
     }
 }
@@ -173,4 +200,6 @@ data class GateResult(
     val outcome: Outcome,
     val violatedBarriers: List<String>,
     val rationale: String,
+    val riskWeight: Double = 1.0,
+    val margins: SafetyMargin = SafetyMargin.SAFE,
 )

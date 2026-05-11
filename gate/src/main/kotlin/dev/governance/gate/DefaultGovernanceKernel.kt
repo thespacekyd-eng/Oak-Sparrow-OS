@@ -119,6 +119,8 @@ class DefaultGovernanceKernel(
             rationale = rationale,
             timestamp = now,
             sequenceNumber = seq,
+            riskWeight = result.riskWeight,
+            margins = result.margins,
         )
 
         // Write audit record
