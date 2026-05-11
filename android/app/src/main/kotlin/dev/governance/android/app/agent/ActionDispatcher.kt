@@ -3,6 +3,9 @@ package dev.governance.android.app.agent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.AlarmClock
+import android.provider.MediaStore
+import android.provider.Settings
 import dev.governance.android.platform.AccessibilityObservationService
 import dev.governance.attestation.AttestationVerifier
 import dev.governance.core.GateDecision
@@ -14,10 +17,10 @@ import kotlinx.coroutines.withContext
  * Dispatches approved actions to the device. Verifies the
  * decision's attestation before every dispatch.
  *
- * Supported kinds:
- * - `read_calendar` — opens Calendar, returns event text if readable
- * - `send_email` — opens Gmail compose, auto-taps Send via accessibility
- * - `share_to_social_app` — opens the system share sheet
+ * Supported kinds: read_calendar, send_email, share_to_social_app,
+ * open_app, send_sms, make_call, set_alarm, set_timer, open_url,
+ * search_web, get_directions, take_photo, change_setting, play_music,
+ * create_event.
  *
  * All other kinds return [DispatchResult.Unsupported].
  */
@@ -62,9 +65,20 @@ class ActionDispatcher(private val context: Context) {
     private suspend fun dispatchByKind(step: PlannedStep): DispatchResult =
         when (step.kind) {
             "read_calendar" -> dispatchReadCalendar()
-            "send_email" -> dispatchSendEmail(step.target ?: "")
+            "send_email" -> dispatchSendEmail(step.target ?: "", step.message)
             "share_to_social_app" -> dispatchShareToSocial(step.target ?: "")
             "open_app" -> dispatchOpenApp(step.target ?: "")
+            "send_sms" -> dispatchSendSms(step.target ?: "", step.message)
+            "make_call" -> dispatchMakeCall(step.target ?: "")
+            "set_alarm" -> dispatchSetAlarm(step.target ?: "")
+            "set_timer" -> dispatchSetTimer(step.target ?: "")
+            "open_url" -> dispatchOpenUrl(step.target ?: "")
+            "search_web" -> dispatchSearchWeb(step.target ?: "")
+            "get_directions" -> dispatchGetDirections(step.target ?: "")
+            "take_photo" -> dispatchTakePhoto()
+            "change_setting" -> dispatchChangeSetting(step.target ?: "")
+            "play_music" -> dispatchPlayMusic(step.target ?: "")
+            "create_event" -> dispatchCreateEvent(step.target ?: "", step.message)
             else -> DispatchResult.Unsupported(
                 "Action '${step.kind}' isn't yet supported. The agent will skip it."
             )
@@ -91,19 +105,18 @@ class ActionDispatcher(private val context: Context) {
         }
     }
 
-    private suspend fun dispatchSendEmail(target: String): DispatchResult {
+    private suspend fun dispatchSendEmail(target: String, message: String?): DispatchResult {
         try {
             val mailto = if (target.contains("@")) target else "$target@example.com"
             val intent = Intent(Intent.ACTION_SENDTO).apply {
                 data = Uri.parse("mailto:$mailto")
-                putExtra(Intent.EXTRA_SUBJECT, "")
-                putExtra(Intent.EXTRA_TEXT, "")
+                putExtra(Intent.EXTRA_SUBJECT, "From Oak & Sparrow")
+                putExtra(Intent.EXTRA_TEXT, message ?: "")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            delay(3000) // wait for compose to render
+            delay(3000)
 
-            // Try to find and click Send button via accessibility
             val sent = AccessibilityObservationService.clickByText("Send")
             return if (sent) {
                 delay(1000)
@@ -162,7 +175,224 @@ class ActionDispatcher(private val context: Context) {
         }
     }
 
+    private fun dispatchSendSms(target: String, message: String?): DispatchResult {
+        return try {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("smsto:$target")
+                putExtra("sms_body", message ?: "")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("SMS compose opened for $target.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open SMS: ${e.message}")
+        }
+    }
+
+    private fun dispatchMakeCall(target: String): DispatchResult {
+        return try {
+            val number = target.replace(Regex("[^0-9+*#]"), "")
+            val intent = Intent(Intent.ACTION_DIAL).apply {
+                data = Uri.parse("tel:$number")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Dialer opened for $number.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open dialer: ${e.message}")
+        }
+    }
+
+    private fun dispatchSetAlarm(target: String): DispatchResult {
+        return try {
+            // Parse "7:30 am", "7am", "14:00", etc.
+            val hourMin = parseTime(target)
+            val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                putExtra(AlarmClock.EXTRA_HOUR, hourMin.first)
+                putExtra(AlarmClock.EXTRA_MINUTES, hourMin.second)
+                putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Alarm set for ${hourMin.first}:${"%02d".format(hourMin.second)}.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not set alarm: ${e.message}")
+        }
+    }
+
+    private fun dispatchSetTimer(target: String): DispatchResult {
+        return try {
+            val seconds = parseDuration(target)
+            val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
+                putExtra(AlarmClock.EXTRA_LENGTH, seconds)
+                putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Timer set for ${seconds / 60} min ${seconds % 60} sec.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not set timer: ${e.message}")
+        }
+    }
+
+    private fun dispatchOpenUrl(target: String): DispatchResult {
+        return try {
+            val url = if (target.startsWith("http")) target else "https://$target"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse(url)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Opened $url.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open URL: ${e.message}")
+        }
+    }
+
+    private fun dispatchSearchWeb(target: String): DispatchResult {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://www.google.com/search?q=${Uri.encode(target)}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Searching for \"$target\".")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not search: ${e.message}")
+        }
+    }
+
+    private fun dispatchGetDirections(target: String): DispatchResult {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("google.navigation:q=${Uri.encode(target)}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            // Fall back to maps web if no maps app
+            try { context.startActivity(intent) }
+            catch (_: Exception) {
+                val webIntent = Intent(Intent.ACTION_VIEW).apply {
+                    data = Uri.parse("https://maps.google.com/maps?daddr=${Uri.encode(target)}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(webIntent)
+            }
+            DispatchResult.Success("Getting directions to $target.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not get directions: ${e.message}")
+        }
+    }
+
+    private fun dispatchTakePhoto(): DispatchResult {
+        return try {
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Camera opened.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open camera: ${e.message}")
+        }
+    }
+
+    private fun dispatchChangeSetting(target: String): DispatchResult {
+        return try {
+            val settingsAction = SETTING_NAME_TO_ACTION[target.lowercase()]
+                ?: Settings.ACTION_SETTINGS
+            val intent = Intent(settingsAction).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Opened ${target.ifBlank { "device" }} settings.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open settings: ${e.message}")
+        }
+    }
+
+    private fun dispatchPlayMusic(target: String): DispatchResult {
+        return try {
+            // Try to open a music app; fall back to search
+            val intent = if (target.isNotBlank()) {
+                Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                    putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/audio")
+                    putExtra(MediaStore.EXTRA_MEDIA_TITLE, target)
+                    putExtra(android.app.SearchManager.QUERY, target)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            } else {
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_APP_MUSIC)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            context.startActivity(intent)
+            DispatchResult.Success(if (target.isNotBlank()) "Playing \"$target\"." else "Music app opened.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not play music: ${e.message}")
+        }
+    }
+
+    private fun dispatchCreateEvent(target: String, message: String?): DispatchResult {
+        return try {
+            val intent = Intent(Intent.ACTION_INSERT).apply {
+                data = android.provider.CalendarContract.Events.CONTENT_URI
+                putExtra(android.provider.CalendarContract.Events.TITLE, target)
+                putExtra(android.provider.CalendarContract.Events.DESCRIPTION, message ?: "")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Calendar event creation opened for \"$target\".")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not create event: ${e.message}")
+        }
+    }
+
+    // --- Parsing helpers ---
+
+    private fun parseTime(input: String): Pair<Int, Int> {
+        // Handles: "7am", "7:30am", "7:30 am", "14:00", "7"
+        val cleaned = input.lowercase().trim()
+        val isPm = cleaned.contains("pm")
+        val digits = cleaned.replace(Regex("[^0-9:]"), "")
+        val parts = digits.split(":")
+        var hour = parts.getOrNull(0)?.toIntOrNull() ?: 8
+        val minute = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        if (isPm && hour < 12) hour += 12
+        if (!isPm && cleaned.contains("am") && hour == 12) hour = 0
+        return Pair(hour.coerceIn(0, 23), minute.coerceIn(0, 59))
+    }
+
+    private fun parseDuration(input: String): Int {
+        // Handles: "5 minutes", "30 seconds", "1 hour", "90s", "5m"
+        val cleaned = input.lowercase().trim()
+        val num = Regex("(\\d+)").find(cleaned)?.groupValues?.get(1)?.toIntOrNull() ?: 5
+        return when {
+            cleaned.contains("hour") || cleaned.endsWith("h") -> num * 3600
+            cleaned.contains("second") || cleaned.endsWith("s") -> num
+            else -> num * 60 // default to minutes
+        }
+    }
+
     companion object {
+        private val SETTING_NAME_TO_ACTION = mapOf(
+            "wifi" to Settings.ACTION_WIFI_SETTINGS,
+            "wi-fi" to Settings.ACTION_WIFI_SETTINGS,
+            "bluetooth" to Settings.ACTION_BLUETOOTH_SETTINGS,
+            "bt" to Settings.ACTION_BLUETOOTH_SETTINGS,
+            "airplane" to Settings.ACTION_AIRPLANE_MODE_SETTINGS,
+            "airplane mode" to Settings.ACTION_AIRPLANE_MODE_SETTINGS,
+            "display" to Settings.ACTION_DISPLAY_SETTINGS,
+            "brightness" to Settings.ACTION_DISPLAY_SETTINGS,
+            "sound" to Settings.ACTION_SOUND_SETTINGS,
+            "volume" to Settings.ACTION_SOUND_SETTINGS,
+            "location" to Settings.ACTION_LOCATION_SOURCE_SETTINGS,
+            "battery" to Settings.ACTION_BATTERY_SAVER_SETTINGS,
+            "storage" to Settings.ACTION_INTERNAL_STORAGE_SETTINGS,
+            "apps" to Settings.ACTION_APPLICATION_SETTINGS,
+            "notifications" to Settings.ACTION_APP_NOTIFICATION_SETTINGS,
+            "security" to Settings.ACTION_SECURITY_SETTINGS,
+            "network" to Settings.ACTION_WIRELESS_SETTINGS,
+        )
         /**
          * Common app names → package names. Used by [dispatchOpenApp] to
          * resolve human-friendly names like "instagram" to package ids

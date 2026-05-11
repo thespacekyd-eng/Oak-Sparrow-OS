@@ -38,9 +38,22 @@ object ActionCostRegistry {
         "read_calendar"       to ActionCost(1.0, "Read-only calendar access"),
         "open_app"            to ActionCost(1.0, "Launch an application"),
         "read_file"           to ActionCost(1.0, "Read-only file access"),
+        "open_url"            to ActionCost(1.0, "Open a web page"),
+        "search_web"          to ActionCost(1.0, "Web search query"),
+        "take_photo"          to ActionCost(1.0, "Open camera"),
+        "get_directions"      to ActionCost(1.0, "Navigation directions"),
+        "play_music"          to ActionCost(1.0, "Play music"),
+
+        // Medium-low: reversible device actions
+        "set_alarm"           to ActionCost(1.5, "Set an alarm (can be deleted)"),
+        "set_timer"           to ActionCost(1.2, "Set a countdown timer"),
+        "change_setting"      to ActionCost(2.0, "Open device settings page"),
+        "create_event"        to ActionCost(2.0, "Create calendar event"),
+        "make_call"           to ActionCost(2.0, "Open dialer (user must confirm)"),
 
         // Medium-impact: directed communication
         "send_email"          to ActionCost(2.5, "Send message to specific recipient"),
+        "send_sms"            to ActionCost(2.5, "Send text message"),
 
         // High-impact: broad or public exposure
         "share_to_social_app" to ActionCost(4.0, "Public or semi-public social post"),

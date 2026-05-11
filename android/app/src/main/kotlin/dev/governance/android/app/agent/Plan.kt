@@ -17,6 +17,8 @@ data class PlannedStep(
     val target: String?,
     val rationale: String,
     val reversibility: Reversibility,
+    /** Optional message body for email/sms actions. */
+    val message: String? = null,
 )
 
 /** Result of attempting to plan from a user instruction. */
