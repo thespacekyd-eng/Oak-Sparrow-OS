@@ -103,7 +103,10 @@ private fun MainNavigation(
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var chatInput by remember { mutableStateOf("") }
     var isProcessing by remember { mutableStateOf(false) }
-    val planner = remember { Planner(context) }
+    // Production wiring: llama.cpp + Qwen3-4B (Apache 2.0). Falls back to
+    // keyword routing if the .so isn't built (NDK setup not run) or the
+    // model file isn't pushed yet. See android/MODEL_SETUP.md.
+    val planner = remember { Planner(LlamaCppLlmEngine(context)) }
     val dispatcher = remember { ActionDispatcher(context) }
     val speculationLog = remember { SpeculationLog() }
     val scope = rememberCoroutineScope()
@@ -187,6 +190,29 @@ private fun MainNavigation(
                 )
             }
             composable("chat") {
+                // Eagerly load the LLM on first chat-surface entry so the
+                // user doesn't wait through cold-load on their first message.
+                // Posts a single SYSTEM message reporting the load state —
+                // makes it visible in-app whether the LLM is actually
+                // running vs whether the planner is on the keyword fallback.
+                LaunchedEffect(Unit) {
+                    if (messages.none { it.id == "llm-status" }) {
+                        val statusText = when {
+                            !planner.isModelAvailable() ->
+                                "Model file not present. Run android/setup-model.sh, " +
+                                "then re-open the chat. Falling back to keyword router."
+                            else -> {
+                                val loadResult = planner.loadModel()
+                                loadResult ?: "On-device LLM ready (${BuildConfig.MODEL_NAME})."
+                            }
+                        }
+                        messages.add(ChatMessage(
+                            id = "llm-status",
+                            role = ChatRole.SYSTEM,
+                            text = statusText,
+                        ))
+                    }
+                }
                 ChatScreen(
                     messages = messages,
                     isProcessing = isProcessing,
@@ -217,16 +243,7 @@ private fun MainNavigation(
 
                         scope.launch {
                             isProcessing = true
-                            // Load model if needed (first time only)
-                            if (planner.isModelAvailable()) {
-                                planner.loadModel()
-                            }
-
-                            // Use the speculative orchestrator: FullyReversible
-                            // App-tier actions (open_app, read_calendar, share)
-                            // dispatch IMMEDIATELY in parallel with kernel.decide()
-                            // for zero-latency UX. OneShot/Irreversible/RootSystem
-                            // still wait for the kernel decision before any work.
+                            if (planner.isModelAvailable()) planner.loadModel()
                             val orchestrator = SpeculativeOrchestrator(
                                 context, planner, ki, dispatcher, speculationLog,
                             )

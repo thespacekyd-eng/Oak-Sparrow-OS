@@ -10,6 +10,7 @@ plugins {
 android {
     namespace = "dev.governance.android.app"
     compileSdk = 35
+    ndkVersion = "26.3.11579264"
 
     defaultConfig {
         applicationId = "dev.governance.android"
@@ -19,10 +20,53 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "GEMMA_MODEL_URL",
-            "\"https://storage.googleapis.com/mediapipe-models/llm_inference/gemma-2b-it-gpu-int4/float16/1/gemma-2b-it-gpu-int4.bin\"")
-        buildConfigField("String", "GEMMA_MODEL_FILENAME",
-            "\"gemma-2b-it-gpu-int4.bin\"")
+        // On-device LLM: open-source, commercial-friendly, sideloaded via
+        // android/setup-model.sh. Keep these in sync with that script.
+        buildConfigField("String", "MODEL_URL",
+            "\"https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf\"")
+        buildConfigField("String", "MODEL_FILENAME",
+            "\"Qwen3-4B-Q4_K_M.gguf\"")
+        buildConfigField("String", "MODEL_NAME",
+            "\"Qwen3-4B-Instruct (Q4_K_M)\"")
+        buildConfigField("String", "MODEL_LICENSE",
+            "\"Apache-2.0\"")
+
+        // Native build of liboaksparrow_llm.so (wraps llama.cpp).
+        // Restrict ABIs to arm64 (modern phones) and x86_64 (emulator) to
+        // keep APK size reasonable.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17", "-fexceptions", "-frtti")
+                arguments += listOf(
+                    "-DANDROID_STL=c++_shared",
+                    "-DCMAKE_BUILD_TYPE=Release",
+                )
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    // Warn loudly if the dev hasn't run setup-llama-cpp.sh yet — saves a
+    // confusing CMake error later.
+    val llamaCppDir = file("src/main/cpp/llama.cpp")
+    if (!llamaCppDir.resolve("CMakeLists.txt").exists()) {
+        logger.warn(
+            "\n+----------------------------------------------------------+\n" +
+            "| llama.cpp source not found at app/src/main/cpp/llama.cpp |\n" +
+            "| Native build will fail. Fix:                             |\n" +
+            "|   bash android/setup-llama-cpp.sh                        |\n" +
+            "+----------------------------------------------------------+\n"
+        )
     }
 
     compileOptions {
@@ -69,7 +113,9 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
-    implementation(libs.mediapipe.llm.inference)
+    // On-device LLM is provided by liboaksparrow_llm.so (built from
+    // app/src/main/cpp/llama_jni.cpp + the cloned llama.cpp). No
+    // Gradle dependency needed.
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.kotest.runner.junit5)

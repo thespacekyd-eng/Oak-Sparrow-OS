@@ -1,0 +1,3 @@
+# llama.cpp source is fetched by setup-llama-cpp.sh, not committed.
+# Pinned commit lives in setup-llama-cpp.sh.
+llama.cpp/

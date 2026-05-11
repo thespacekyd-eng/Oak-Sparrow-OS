@@ -1,6 +1,5 @@
 package dev.governance.android.app.agent
 
-import android.content.Context
 import dev.governance.core.Reversibility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,67 +7,65 @@ import kotlinx.serialization.json.*
 import java.io.File
 
 /**
- * Converts a user instruction into a structured [Plan] using
- * on-device LLM inference via MediaPipe.
+ * Converts a user instruction into a structured [Plan].
  *
- * The model file must be pre-installed at
- * `context.filesDir/models/{GEMMA_MODEL_FILENAME}`.
- * Call [isModelAvailable] before [plan] to check.
+ * The Planner depends on an injected [LlmEngine] for the LLM path
+ * and falls back to its keyword router when the engine is not loaded
+ * or when generation fails. This split keeps the prompt-build / parse-
+ * response pipeline pure JVM logic (testable without an Android
+ * Context or a real model) and lets the production wiring swap the
+ * runtime (today: llama.cpp + Qwen3) without touching planner logic.
+ *
+ * Lifecycle:
+ * 1. Construct with the chosen engine. Cheap.
+ * 2. Optionally call [loadModel] proactively (e.g., when the chat
+ *    surface becomes visible). Otherwise the first [plan] call will
+ *    just use the keyword fallback.
+ * 3. Call [plan] per user instruction.
+ * 4. Call [close] to release engine resources when the planner is no
+ *    longer needed (e.g., when the chat surface is destroyed).
  */
-class Planner(private val context: Context) {
+class Planner(
+    private val engine: LlmEngine,
+) {
 
-    private var llmInference: Any? = null
-    private var loadError: String? = null
+    /**
+     * Where the engine expects the model file. `null` for engines
+     * that don't load from disk. Exposed so the chat surface can
+     * surface a "place model file at: X" message.
+     */
+    fun modelPath(): File? = engine.modelPath()
 
-    fun modelPath(): File =
-        File(context.filesDir, "models/${dev.governance.android.app.BuildConfig.GEMMA_MODEL_FILENAME}")
+    /** Whether the engine reports a usable model file on disk. */
+    fun isModelAvailable(): Boolean = engine.isModelAvailable()
 
-    fun isModelAvailable(): Boolean = modelPath().exists()
-
+    /**
+     * Loads the underlying engine's model. Returns `null` on success
+     * or a human-readable error message on failure. Idempotent.
+     */
     suspend fun loadModel(): String? = withContext(Dispatchers.IO) {
-        if (llmInference != null) return@withContext null
-        if (!isModelAvailable()) return@withContext "Model file not found. See setup instructions."
-
-        try {
-            val clazz = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInference")
-            val optionsClass = Class.forName(
-                "com.google.mediapipe.tasks.genai.llminference.LlmInference\$LlmInferenceOptions"
-            )
-            val builderClass = Class.forName(
-                "com.google.mediapipe.tasks.genai.llminference.LlmInference\$LlmInferenceOptions\$Builder"
-            )
-
-            val builder = builderClass.getDeclaredConstructor().newInstance()
-            builderClass.getMethod("setModelPath", String::class.java)
-                .invoke(builder, modelPath().absolutePath)
-            builderClass.getMethod("setMaxTokens", Int::class.java)
-                .invoke(builder, 1024)
-
-            val options = builderClass.getMethod("build").invoke(builder)
-            llmInference = clazz.getMethod("createFromOptions", Context::class.java, optionsClass)
-                .invoke(null, context, options)
-
-            null
-        } catch (e: Exception) {
-            loadError = e.message ?: "Failed to load model"
-            loadError
-        }
+        engine.loadModel()
     }
 
+    /**
+     * Plans the user's instruction. Routes through the engine when it
+     * is loaded; otherwise falls back to the keyword router.
+     */
     suspend fun plan(userInstruction: String): PlanResult = withContext(Dispatchers.IO) {
-        val llm = llmInference
-        if (llm != null) {
-            planWithLlm(llm, userInstruction)
+        if (engine.isLoaded) {
+            planWithEngine(userInstruction)
         } else {
             planWithKeywords(userInstruction)
         }
     }
 
-    private fun planWithLlm(llm: Any, instruction: String): PlanResult {
+    /** Releases engine resources. Call when the planner is no longer needed. */
+    fun close() = engine.close()
+
+    private suspend fun planWithEngine(instruction: String): PlanResult {
         val prompt = buildPrompt(instruction)
         return try {
-            val response = llm.javaClass.getMethod("generateResponse", String::class.java)
-                .invoke(llm, prompt) as String
+            val response = engine.generate(prompt)
             parseResponse(response)
         } catch (e: Exception) {
             PlanResult.Error("LLM inference failed: ${e.message}")
