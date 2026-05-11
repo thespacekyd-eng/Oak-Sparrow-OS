@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Local repo manifest fragment for syncing the governance-kernel into
+    an AOSP/LineageOS source tree.
+
+    Place under .repo/local_manifests/governance-kernel.xml in your
+    AOSP checkout, then run `repo sync packages/apps/OakSparrow`.
+
+    Replace the remote/url with your own git host. The default fork
+    points at a placeholder; update before use.
+-->
+<manifest>
+    <remote name="oaksparrow"
+            fetch="https://github.com/PLACEHOLDER-USER/" />
+
+    <project name="oak-sparrow-os"
+             path="packages/apps/OakSparrow"
+             remote="oaksparrow"
+             revision="main"
+             clone-depth="1" />
+</manifest>

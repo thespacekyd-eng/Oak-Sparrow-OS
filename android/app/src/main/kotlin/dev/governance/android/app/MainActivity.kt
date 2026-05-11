@@ -105,7 +105,12 @@ private fun MainNavigation(
     var isProcessing by remember { mutableStateOf(false) }
     val planner = remember { Planner(context) }
     val dispatcher = remember { ActionDispatcher(context) }
+    val speculationLog = remember { SpeculationLog() }
     val scope = rememberCoroutineScope()
+
+    // Detected once per Activity lifecycle. The mode can't change at
+    // runtime — it's determined by where the APK was installed.
+    val buildMode = remember { BuildModeDetector.detect(context) }
 
     data class NavItem(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
     val items = listOf(
@@ -150,6 +155,7 @@ private fun MainNavigation(
                     onDecisionTap = { navController.navigate("decisions") },
                     onSeeDetails = { navController.navigate("technical") },
                     onChatTap = { navController.navigate("chat") },
+                    buildMode = buildMode,
                 )
             }
             composable("decisions") {
@@ -177,6 +183,7 @@ private fun MainNavigation(
                     systemEvents = PreviewKernelState.systemEvents.map { it.event },
                     chainVerified = true,
                     chainProblemTime = null,
+                    buildMode = buildMode,
                 )
             }
             composable("chat") {
@@ -215,8 +222,15 @@ private fun MainNavigation(
                                 planner.loadModel()
                             }
 
-                            val orchestrator = AgentOrchestrator(context, planner, ki, dispatcher)
-                            val (planResult, log) = orchestrator.execute(instruction)
+                            // Use the speculative orchestrator: FullyReversible
+                            // App-tier actions (open_app, read_calendar, share)
+                            // dispatch IMMEDIATELY in parallel with kernel.decide()
+                            // for zero-latency UX. OneShot/Irreversible/RootSystem
+                            // still wait for the kernel decision before any work.
+                            val orchestrator = SpeculativeOrchestrator(
+                                context, planner, ki, dispatcher, speculationLog,
+                            )
+                            val (planResult, log, _) = orchestrator.execute(instruction)
 
                             when (planResult) {
                                 is PlanResult.Success -> {

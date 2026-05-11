@@ -32,14 +32,42 @@ class ActionDispatcher(private val context: Context) {
                 )
             }
 
-            when (step.kind) {
-                "read_calendar" -> dispatchReadCalendar()
-                "send_email" -> dispatchSendEmail(step.target ?: "")
-                "share_to_social_app" -> dispatchShareToSocial(step.target ?: "")
-                else -> DispatchResult.Unsupported(
-                    "Action '${step.kind}' isn't yet supported. The agent will skip it."
-                )
+            dispatchByKind(step)
+        }
+
+    /**
+     * Speculative dispatch — fires the reversible work for a step WITHOUT
+     * requiring a signed [GateDecision]. Used by [SpeculativeOrchestrator]
+     * to launch the intent immediately while the kernel decides in parallel.
+     *
+     * Hard requirements:
+     * - Caller must verify the step is FullyReversible AND App-tier before
+     *   calling this. Speculative dispatch on OneShot/Irreversible/RootSystem
+     *   actions is forbidden — those must wait for the kernel decision.
+     * - The audit log is NOT written by this method. The real signed decision
+     *   that arrives from the kernel produces the audit record.
+     */
+    suspend fun dispatchSpeculative(step: PlannedStep): DispatchResult =
+        withContext(Dispatchers.Main) {
+            require(step.reversibility == dev.governance.core.Reversibility.FullyReversible) {
+                "Speculative dispatch only allowed for FullyReversible steps; got ${step.reversibility}"
             }
+            require(dev.governance.core.ActionTier.classify(step.kind) ==
+                dev.governance.core.ActionTier.App) {
+                "Speculative dispatch only allowed for App-tier kinds; '${step.kind}' is RootSystem"
+            }
+            dispatchByKind(step)
+        }
+
+    private suspend fun dispatchByKind(step: PlannedStep): DispatchResult =
+        when (step.kind) {
+            "read_calendar" -> dispatchReadCalendar()
+            "send_email" -> dispatchSendEmail(step.target ?: "")
+            "share_to_social_app" -> dispatchShareToSocial(step.target ?: "")
+            "open_app" -> dispatchOpenApp(step.target ?: "")
+            else -> DispatchResult.Unsupported(
+                "Action '${step.kind}' isn't yet supported. The agent will skip it."
+            )
         }
 
     private suspend fun dispatchReadCalendar(): DispatchResult {
@@ -88,6 +116,36 @@ class ActionDispatcher(private val context: Context) {
         }
     }
 
+    private suspend fun dispatchOpenApp(target: String): DispatchResult {
+        if (target.isBlank()) {
+            return DispatchResult.Failed("No app name provided.")
+        }
+        return try {
+            // Resolve human-friendly app names to launch intents.
+            val pm = context.packageManager
+            val candidate = APP_NAME_TO_PACKAGE[target.lowercase()]
+                ?: target // user may have typed a package name directly
+
+            val launchIntent = pm.getLaunchIntentForPackage(candidate)
+                ?: pm.getLaunchIntentForPackage(target.lowercase())
+
+            if (launchIntent == null) {
+                // Fall back to a query intent that lets the system resolve.
+                val queryIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(queryIntent)
+                return DispatchResult.Failed("Could not find $target on this device.")
+            }
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
+            DispatchResult.Success("Opened $target.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open $target: ${e.message}")
+        }
+    }
+
     private fun dispatchShareToSocial(target: String): DispatchResult {
         return try {
             val intent = Intent(Intent.ACTION_SEND).apply {
@@ -102,5 +160,38 @@ class ActionDispatcher(private val context: Context) {
         } catch (e: Exception) {
             DispatchResult.Failed("Could not open share sheet: ${e.message}")
         }
+    }
+
+    companion object {
+        /**
+         * Common app names → package names. Used by [dispatchOpenApp] to
+         * resolve human-friendly names like "instagram" to package ids
+         * like "com.instagram.android". Not exhaustive — falls back to
+         * treating the user's input as a package name directly.
+         */
+        internal val APP_NAME_TO_PACKAGE = mapOf(
+            "instagram" to "com.instagram.android",
+            "ig" to "com.instagram.android",
+            "gmail" to "com.google.android.gm",
+            "mail" to "com.google.android.gm",
+            "calendar" to "com.google.android.calendar",
+            "messages" to "com.google.android.apps.messaging",
+            "chrome" to "com.android.chrome",
+            "browser" to "com.android.chrome",
+            "youtube" to "com.google.android.youtube",
+            "yt" to "com.google.android.youtube",
+            "maps" to "com.google.android.apps.maps",
+            "settings" to "com.android.settings",
+            "spotify" to "com.spotify.music",
+            "twitter" to "com.twitter.android",
+            "x" to "com.twitter.android",
+            "whatsapp" to "com.whatsapp",
+            "tiktok" to "com.zhiliaoapp.musically",
+            "discord" to "com.discord",
+            "slack" to "com.Slack",
+            "photos" to "com.google.android.apps.photos",
+            "camera" to "com.android.camera",
+            "files" to "com.google.android.apps.nbu.files",
+        )
     }
 }

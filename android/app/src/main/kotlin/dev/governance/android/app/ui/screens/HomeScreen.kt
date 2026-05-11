@@ -17,6 +17,7 @@ import dev.governance.android.app.ui.ActionTemplates
 import dev.governance.android.app.ui.components.VerifiedBadge
 import dev.governance.android.app.ui.theme.BloomPalette
 import dev.governance.android.app.BuildConfig
+import dev.governance.android.app.BuildMode
 import dev.governance.core.GateDecision
 import dev.governance.core.GovernanceSnapshot
 import dev.governance.core.Outcome
@@ -36,6 +37,7 @@ fun HomeScreen(
     onDecisionTap: (GateDecision) -> Unit,
     onSeeDetails: () -> Unit,
     onChatTap: (() -> Unit)? = null,
+    buildMode: BuildMode = BuildMode.App,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -56,6 +58,35 @@ fun HomeScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        // Build-mode banner: prominent in System mode (celebrates ROM
+        // integration), subtle in App mode (notes the limitation).
+        if (buildMode == BuildMode.System) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = BloomPalette.TrustGreen.copy(alpha = 0.16f),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = BloomPalette.TrustGreen,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "System mode \u2014 full governance kernel active. Root capabilities available.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
             Spacer(Modifier.height(8.dp))
         }

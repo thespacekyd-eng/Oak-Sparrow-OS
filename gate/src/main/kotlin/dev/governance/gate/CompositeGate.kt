@@ -81,6 +81,20 @@ object CompositeGate {
             )
         }
 
+        // Rule 2b: RootSystem tier → always HOLD regardless of γ or warmup.
+        // Privileged operations (shell exec, package install, settings put,
+        // network control, file system write) require explicit user approval
+        // every time. The dispatcher additionally requires system-UID placement
+        // before any privileged operation actually executes.
+        val tier = ActionTier.classify(action.kind)
+        if (tier == ActionTier.RootSystem) {
+            return GateResult(
+                outcome = Outcome.HOLD,
+                violatedBarriers = emptyList(),
+                rationale = "HOLD: root-tier action '${action.kind}' requires explicit user approval",
+            )
+        }
+
         val bias = REVERSIBILITY_BIAS[reversibility] ?: 0.0
         val effectiveGamma = (gamma + bias).coerceIn(0.0, 1.0)
 

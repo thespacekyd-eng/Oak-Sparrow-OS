@@ -1,0 +1,68 @@
+// Soong blueprint for the Oak & Sparrow governance kernel as a privileged
+// AOSP system app. Drop this directory under packages/apps/OakSparrow/ in
+// an AOSP/LineageOS source tree, add to the device's PRODUCT_PACKAGES, then
+// run `m OakSparrow` to build, or run a full system image build.
+//
+// Requirements:
+//   - AOSP 14 (API 34) or AOSP 15 (API 35)
+//   - Platform key generated for your device (see system_app_keys/README.md)
+//   - SELinux permissive or with the policy in sepolicy/governance_kernel.te
+//     merged into the device's sepolicy tree
+//
+// This blueprint references the prebuilt APK produced by `./gradlew
+// :android-app:assembleRelease` from the governance-kernel project.
+// Update prebuilts/OakSparrow.apk before running m.
+
+android_app_import {
+    name: "OakSparrow",
+    apk: "prebuilts/OakSparrow.apk",
+
+    // Place under /system/priv-app, not /system/app — privileged apps
+    // get permissions in privapp-permissions.xml.
+    privileged: true,
+
+    // Sign with the platform key. Without this, system-permission grants
+    // listed in privapp-permissions/dev.governance.android.xml are denied.
+    certificate: "platform",
+
+    // The APK ships with a debuggable manifest; release ROMs should rebuild
+    // android-app with `assembleRelease` and replace the prebuilt with the
+    // unsigned/release-keyed variant before merging.
+    presigned: false,
+
+    // Required permissions — mirrored from privapp-permissions XML.
+    required: [
+        "privapp-permissions-dev.governance.android.xml",
+        "init.governance.rc",
+        "governance_kernel-sepolicy",
+    ],
+}
+
+// Privileged-permission allowlist for the governance kernel.
+prebuilt_etc {
+    name: "privapp-permissions-dev.governance.android.xml",
+    src: "permissions/privapp-permissions-dev.governance.android.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+}
+
+// init.rc fragment — starts the kernel service at boot.
+prebuilt_etc {
+    name: "init.governance.rc",
+    src: "init/init.governance.rc",
+    sub_dir: "init",
+    filename_from_src: true,
+}
+
+// SELinux policy fragment.
+// Note: This requires the device sepolicy makefile to include this directory
+// via BOARD_PLAT_PRIVATE_SEPOLICY_DIR or BOARD_VENDOR_SEPOLICY_DIRS depending
+// on whether the policy lives in plat or vendor.
+filegroup {
+    name: "governance_kernel-sepolicy",
+    srcs: [
+        "sepolicy/governance_kernel.te",
+        "sepolicy/file_contexts",
+        "sepolicy/seapp_contexts",
+    ],
+}

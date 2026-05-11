@@ -1,0 +1,72 @@
+# SELinux policy for the Oak & Sparrow governance kernel.
+#
+# Defines a domain `governance_kernel` for the GovernanceKernelService
+# and grants it the privileges it needs to:
+#   - Generate Ed25519 keys via Keystore
+#   - Read/write the encrypted audit log under /data/governance
+#   - Receive AIDL transactions from agent processes
+#   - Manage its foreground notification
+#   - Drive AccessibilityService observation
+#   - Execute privileged operations via the RootCapabilityDispatcher
+#     (shell exec on allowlisted binaries, settings put on allowlisted
+#     keys, package install/uninstall via PackageInstaller)
+#
+# Drop this file under device/<vendor>/<device>/sepolicy/private/ in the
+# AOSP source tree, then ensure the device's sepolicy makefile includes
+# this directory.
+
+type governance_kernel, domain, coredomain;
+type governance_kernel_exec, exec_type, file_type, system_file_type;
+
+# App-domain transition.
+app_domain(governance_kernel)
+init_daemon_domain(governance_kernel)
+
+# Audit log + state filesystem access.
+allow governance_kernel governance_data_file:dir { create_dir_perms search };
+allow governance_kernel governance_data_file:file { create_file_perms };
+
+# Keystore for Ed25519 signing key + AES-GCM audit encryption key.
+allow governance_kernel keystore_service:service_manager find;
+binder_call(governance_kernel, keystore)
+
+# AIDL surface — agents bind to the AgentKernelInterface in our process.
+binder_use(governance_kernel)
+binder_call(governance_kernel, untrusted_app)
+binder_service(governance_kernel)
+
+# Foreground notification.
+allow governance_kernel notification_service:service_manager find;
+
+# AccessibilityService observation (pre-existing observe-only role).
+allow governance_kernel accessibility_service:service_manager find;
+
+# Root-tier capability dispatch — privileged operations.
+# Shell exec on allowlisted binaries (pm, am, settings, getprop, dumpsys).
+allow governance_kernel system_file:file { rx_file_perms execute_no_trans };
+allow governance_kernel toolbox_exec:file rx_file_perms;
+
+# Settings put — write secure/global settings.
+allow governance_kernel settings_service:service_manager find;
+binder_call(governance_kernel, system_server)
+
+# Package install/uninstall via PackageInstaller.
+allow governance_kernel package_service:service_manager find;
+allow governance_kernel installd:fd use;
+
+# Network control — toggle wifi/airplane mode via NETWORK_SETTINGS.
+allow governance_kernel connectivity_service:service_manager find;
+allow governance_kernel wifi_service:service_manager find;
+
+# Neverallow rules — defense in depth.
+# The governance kernel must NEVER:
+#   - Write to /system or /vendor (read-only)
+#   - Modify SELinux policy at runtime
+#   - Disable verified boot
+neverallow governance_kernel { system_file vendor_file }:dir_file_class_set
+    { write append unlink rename create rmdir };
+neverallow governance_kernel selinuxfs:file write;
+neverallow governance_kernel kernel:security setbool;
+
+# Define the data file type.
+type governance_data_file, file_type, data_file_type, core_data_file_type;

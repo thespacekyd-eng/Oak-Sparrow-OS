@@ -81,10 +81,18 @@ class Planner(private val context: Context) {
             "read_calendar",
             "send_email",
             "share_to_social_app",
+            "open_app",
         )
 
         private const val UNSUPPORTED_MSG =
-            "I can only check your calendar, send email, or share to social media right now."
+            "I can only open apps, check your calendar, send email, or share to social media right now."
+
+        /** Common app names users say in plain English — these route to open_app. */
+        private val APP_TRIGGERS = setOf(
+            "instagram", "ig", "gmail", "calendar", "messages", "chrome", "browser",
+            "youtube", "yt", "maps", "settings", "spotify", "twitter", "whatsapp",
+            "tiktok", "discord", "slack", "photos", "camera", "files",
+        )
 
         /**
          * Keyword-based fallback planner for when the LLM isn't
@@ -92,6 +100,27 @@ class Planner(private val context: Context) {
          */
         internal fun planWithKeywords(instruction: String): PlanResult {
             val lower = instruction.lowercase()
+
+            // open_app routing: "open instagram", "launch chrome", "pull up gmail",
+            // "show me youtube". Detected by an open-verb keyword PLUS a known app name.
+            // Checked FIRST so "pull up instagram" doesn't get captured by the share-rule.
+            val isOpenIntent = lower.contains("open ") || lower.contains("launch ") ||
+                lower.contains("pull up") || lower.contains("show me ") ||
+                lower.contains("start ") || lower.contains("bring up")
+            if (isOpenIntent) {
+                val app = APP_TRIGGERS.firstOrNull { lower.contains(it) }
+                if (app != null) {
+                    return PlanResult.Success(Plan(
+                        summary = "Open ${app.replaceFirstChar { it.uppercase() }}",
+                        steps = listOf(PlannedStep(
+                            kind = "open_app",
+                            target = app,
+                            rationale = "Open the requested app",
+                            reversibility = Reversibility.FullyReversible,
+                        )),
+                    ))
+                }
+            }
 
             return when {
                 lower.contains("email") || lower.contains("mail") -> {
@@ -143,17 +172,20 @@ class Planner(private val context: Context) {
         internal fun buildPrompt(instruction: String): String = """
 You are a phone assistant. Convert the user's request into a JSON action plan.
 
-Supported actions ONLY: read_calendar, send_email, share_to_social_app.
+Supported actions ONLY: read_calendar, send_email, share_to_social_app, open_app.
 Reject any other action.
 
 Respond with valid JSON only:
 {"summary":"brief description","steps":[{"kind":"action_kind","target":"who or what","rationale":"why","reversibility":"FullyReversible or OneShot"}]}
 
-Reversibility: read_calendar=FullyReversible, send_email=OneShot, share_to_social_app=FullyReversible.
+Reversibility: read_calendar=FullyReversible, send_email=OneShot, share_to_social_app=FullyReversible, open_app=FullyReversible.
 
 Example:
 User: email chen saying I'll be late
 {"summary":"Send email to chen about being late","steps":[{"kind":"send_email","target":"chen","rationale":"User wants to notify chen","reversibility":"OneShot"}]}
+
+User: pull up instagram
+{"summary":"Open Instagram","steps":[{"kind":"open_app","target":"instagram","rationale":"User wants to open Instagram","reversibility":"FullyReversible"}]}
 
 If the user asks for something outside supported actions, respond:
 {"summary":"unsupported","steps":[]}

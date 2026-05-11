@@ -21,6 +21,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
+import dev.governance.android.app.BuildMode
+import dev.governance.android.app.BuildModeDetector
 import dev.governance.core.AuditRecord
 import dev.governance.core.GovernanceSnapshot
 import dev.governance.core.SystemEventRecord
@@ -41,6 +43,7 @@ fun TechnicalDetailScreen(
     chainVerified: Boolean,
     chainProblemTime: String?,
     expandSystemEvents: Boolean = false,
+    buildMode: BuildMode = BuildMode.App,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -92,6 +95,13 @@ fun TechnicalDetailScreen(
                             valueColor = if (snapshot.signingAlgorithm != "Ed25519")
                                 MaterialTheme.colorScheme.error
                             else null,
+                        )
+                        MonoRow(
+                            "Build mode",
+                            BuildModeDetector.shortLabel(buildMode),
+                            valueColor = if (buildMode == BuildMode.App)
+                                MaterialTheme.colorScheme.outline
+                            else MaterialTheme.colorScheme.primary,
                         )
                         // Envelope: stacked vertically because the description is long
                         Text(stringResource(R.string.technical_envelope),
