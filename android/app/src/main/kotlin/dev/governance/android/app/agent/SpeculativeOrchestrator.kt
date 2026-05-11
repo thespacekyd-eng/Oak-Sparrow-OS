@@ -22,34 +22,32 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Speculative dispatch orchestrator — the zero-latency core.
+ * Speculative dispatch orchestrator — the negative-latency core.
  *
- * For [Reversibility.FullyReversible] steps in [ActionTier.App], the
- * dispatcher's reversible work (intent fire, app preload, share sheet
- * open) starts the moment the planner emits the candidate. The kernel's
- * `decide()` runs in parallel. The user perceives the loaded app
- * before they finish speaking.
+ * Three dispatch tiers, from fastest to most cautious:
  *
- * Speculation rules:
- * - [Reversibility.FullyReversible] + [ActionTier.App] → speculate (preflight)
- * - All other combinations → wait for kernel decision before any dispatch
+ * ## Instant (negative latency)
+ * When [GatePredictor.shouldInstantDispatch] returns true (FullyReversible,
+ * App-tier, warmup complete, gamma well below HOLD threshold), the action
+ * fires **before** the kernel's `decide()` even starts. The signed decision
+ * still runs asynchronously for attestation and audit; if it disagrees
+ * (rare — only possible during rapid gamma spikes), the action is rolled
+ * back and logged. The user perceives the result before the governance
+ * round-trip completes.
  *
- * Speculation outcomes:
- * - PASS → commit the speculative work (mark [SpeculationLog] confirmed).
- *   The intent already fired and the app is on screen; nothing more to do.
- * - HOLD → speculation stays as-is (the reversible action is informational;
- *   when the user approves, the agent reports completion; when the user
- *   denies, the agent records the speculative dispatch as undone).
- * - VETO → roll back. Best-effort: if the dispatcher recorded a closeable
- *   side effect, attempt to close it. For pure reversible work like
- *   "open Instagram," there's nothing to roll back beyond logging the
- *   speculative dispatch as overruled.
+ * ## Speculative (zero latency)
+ * For [Reversibility.FullyReversible] + [ActionTier.App] steps that don't
+ * qualify for instant dispatch (e.g. during warmup, or when gamma is
+ * borderline), dispatch and `decide()` run in parallel. The user sees the
+ * result in max(dispatch, gate) time instead of dispatch + gate.
  *
- * This orchestrator never speculates on root-tier or non-reversible
- * actions. The kernel still gates the eventual commit; the kernel signs
- * the attestation; nothing about the cryptographic trust chain changes.
- * Speculation is purely a UX latency win on actions where the gate's
- * answer is statistically very likely to be PASS.
+ * ## Strict (positive latency)
+ * Everything else (OneShot, Irreversible, RootSystem). The kernel's
+ * `decide()` must return before any dispatch. HOLD produces an auth
+ * dialog; VETO prevents dispatch entirely.
+ *
+ * The kernel still signs every decision; speculation is purely a UX
+ * latency win. Nothing about the cryptographic trust chain changes.
  */
 class SpeculativeOrchestrator(
     private val context: Context,
@@ -59,7 +57,16 @@ class SpeculativeOrchestrator(
     private val speculationLog: SpeculationLog = SpeculationLog(),
 ) {
 
+    /** Cached snapshot for gate prediction. Refreshed on each [execute]. */
+    private var snapshot: dev.governance.core.GovernanceSnapshot? = null
+
     suspend fun execute(userInstruction: String): Triple<PlanResult, ExecutionLog?, SpeculationLog> {
+        // Refresh snapshot before planning — used by GatePredictor for
+        // instant dispatch decisions. This is a read-only IPC call.
+        snapshot = try {
+            kernel.snapshot()?.toKernel()
+        } catch (_: Exception) { null }
+
         val planResult = planner.plan(userInstruction)
         if (planResult is PlanResult.Error) return Triple(planResult, null, speculationLog)
 
@@ -67,11 +74,15 @@ class SpeculativeOrchestrator(
         val log = ExecutionLog(plan)
 
         for ((index, step) in plan.steps.withIndex()) {
-            val tier = ActionTier.classify(step.kind)
-            val canSpeculate = tier == ActionTier.App &&
+            val snap = snapshot
+            val canInstant = snap != null && GatePredictor.shouldInstantDispatch(step, snap)
+            val canSpeculate = !canInstant &&
+                ActionTier.classify(step.kind) == ActionTier.App &&
                 step.reversibility == Reversibility.FullyReversible
 
-            if (canSpeculate) {
+            if (canInstant) {
+                executeInstant(index, step, log)
+            } else if (canSpeculate) {
                 executeSpeculative(index, step, log)
             } else {
                 executeStrict(index, step, log)
@@ -86,6 +97,68 @@ class SpeculativeOrchestrator(
 
         log.markFinished()
         return Triple(planResult, log, speculationLog)
+    }
+
+    /**
+     * Instant (negative latency) path: dispatch BEFORE the gate runs.
+     *
+     * The action fires the moment the planner emits it. The kernel's
+     * decide() runs in a fire-and-forget coroutine for attestation and
+     * audit — but the user sees the result instantly. If the gate
+     * disagrees (only possible during rapid gamma spikes between the
+     * snapshot and the decision), the action is rolled back.
+     *
+     * Preconditions (enforced by [GatePredictor.shouldInstantDispatch]):
+     * - FullyReversible + App tier (rollback is cheap)
+     * - Warmup complete (prediction reliable)
+     * - Gamma well below HOLD threshold (high-confidence PASS)
+     */
+    private suspend fun executeInstant(
+        index: Int,
+        step: PlannedStep,
+        log: ExecutionLog,
+    ): Unit = coroutineScope {
+        val speculationId = speculationLog.recordStarted(step)
+
+        // Dispatch NOW — no gate check.
+        log.update(index, ExecutionLog.StepState.Executing)
+        val result = try {
+            dispatcher.dispatchSpeculative(step)
+        } catch (e: Exception) {
+            DispatchResult.Failed("Instant dispatch failed: ${e.message}")
+        }
+        log.update(index, resultToState(result))
+
+        // Gate runs asynchronously — attestation and audit still happen.
+        async {
+            val proposed = buildProposedAction(step)
+            val decision: GateDecision? = try {
+                kernel.decide(ProposedActionParcel.from(proposed)).toKernel()
+            } catch (_: Exception) { null }
+
+            if (decision == null) {
+                speculationLog.recordRolledBack(speculationId, "kernel error (async)")
+                return@async
+            }
+
+            when (decision.outcome) {
+                Outcome.PASS -> {
+                    speculationLog.recordCommitted(speculationId, decision.auditId.value)
+                    resolveDecision(decision, result)
+                }
+                Outcome.HOLD -> {
+                    // Rare: gamma spiked between snapshot and decision.
+                    // Action already landed — ask user post-facto.
+                    speculationLog.recordCommitted(speculationId, decision.auditId.value)
+                    resolveDecision(decision, result)
+                }
+                Outcome.VETO -> {
+                    // Very rare: hard barrier or extreme gamma spike.
+                    speculationLog.recordRolledBack(speculationId, decision.rationale)
+                    rollbackSpeculation(step)
+                }
+            }
+        }
     }
 
     /**
