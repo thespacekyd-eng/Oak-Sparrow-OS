@@ -175,7 +175,7 @@ Java_dev_governance_android_app_agent_LlamaCppNative_nativeGenerate(
     LOGI("nativeGenerate: prompt %d tokens, max_new=%d", n_tokens, maxTokens);
 
     // Reset KV cache for a fresh single-turn generation.
-    llama_memory_clear(llama_get_memory(lc->ctx), /*data=*/true);
+    llama_kv_cache_clear(lc->ctx);
 
     // Sampler chain: top-k -> top-p -> temp -> repeat-penalty -> dist
     auto sparams = llama_sampler_chain_default_params();
