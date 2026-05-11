@@ -7,6 +7,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+        Voice input. Required by VoiceController for SpeechRecognizer.
+        We use createOnDeviceSpeechRecognizer (API 31+) when available
+        to keep recognition local. The absence of INTERNET permission
+        means even the fallback recognizer path cannot leak audio
+        upstream from this app's process.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!--
         Android 11+ package visibility filter. The agent's open_app
         dispatcher uses PackageManager.getLaunchIntentForPackage() which
         requires either QUERY_ALL_PACKAGES (privileged) or an explicit
@@ -38,6 +48,14 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!--
+            Android 11+ package visibility for TextToSpeech engines.
+            Without this, queryIntentServices(TTS_SERVICE) returns empty
+            and we can't inspect/initialize the on-device TTS engine.
+        -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application
@@ -62,6 +80,30 @@
             android:name=".AuthorizationActivity"
             android:exported="false"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!--
+            Voice-first assistant entry point. Long-press home (or whatever
+            invokes the system assist gesture) routes here once the user
+            sets Oak & Sparrow as the default Digital assistant app:
+                Settings → Apps → Default apps → Digital assistant app
+            Translucent so the user's previous activity stays visible
+            behind the immersive listening overlay.
+        -->
+        <activity
+            android:name=".AssistantActivity"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".GovernanceKernelService"

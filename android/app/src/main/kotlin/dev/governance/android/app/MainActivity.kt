@@ -23,10 +23,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
 import dev.governance.android.app.agent.*
 import dev.governance.android.app.ui.PreviewKernelState
 import dev.governance.android.app.ui.screens.*
 import dev.governance.android.app.ui.theme.OakSparrowTheme
+import dev.governance.android.app.voice.VoiceController
+import dev.governance.android.app.voice.VoiceState
 import dev.governance.core.GovernanceSnapshot
 import kotlinx.coroutines.launch
 
@@ -110,6 +114,30 @@ private fun MainNavigation(
     val dispatcher = remember { ActionDispatcher(context) }
     val speculationLog = remember { SpeculationLog() }
     val scope = rememberCoroutineScope()
+
+    // Voice loop. Mic + TTS, both on-device. Constructed lazily — no
+    // I/O at construction. The onTranscript callback drops the
+    // recognized text into the chat input and auto-sends, so a voice
+    // utterance follows the exact same Planner -> Kernel -> Dispatcher
+    // path as a typed message: kernel still gates every action.
+    val voiceController = remember {
+        VoiceController(context) { transcript ->
+            chatInput = transcript
+        }
+    }
+    val voiceState = voiceController.state.collectAsState().value
+    val voiceAvailable = remember { voiceController.isRecognitionAvailable() }
+
+    // RECORD_AUDIO runtime permission — must be requested before the
+    // first mic tap. This is a one-time grant per install.
+    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) voiceController.startListening()
+    }
+    DisposableEffect(Unit) {
+        onDispose { voiceController.shutdown() }
+    }
 
     // Detected once per Activity lifecycle. The mode can't change at
     // runtime — it's determined by where the APK was installed.
@@ -195,6 +223,8 @@ private fun MainNavigation(
                 // Posts a single SYSTEM message reporting the load state —
                 // makes it visible in-app whether the LLM is actually
                 // running vs whether the planner is on the keyword fallback.
+                // PHASE-A-TESTABILITY: this is the single visible signal that
+                // the on-device LLM swap landed correctly.
                 LaunchedEffect(Unit) {
                     if (messages.none { it.id == "llm-status" }) {
                         val statusText = when {
@@ -213,17 +243,15 @@ private fun MainNavigation(
                         ))
                     }
                 }
-                ChatScreen(
-                    messages = messages,
-                    isProcessing = isProcessing,
-                    modelAvailable = planner.isModelAvailable(),
-                    inputText = chatInput,
-                    onInputChange = { chatInput = it },
-                    onSend = {
-                        val instruction = chatInput.trim()
-                        if (instruction.isBlank() || isProcessing) return@ChatScreen
+                // The instruction-dispatch path. Lifted to a lambda so both
+                // the manual Send tap and the voice "transcript landed"
+                // LaunchedEffect can invoke it. Every voice utterance and
+                // every typed message takes this exact path through the
+                // kernel — voice doesn't bypass governance.
+                val sendInstruction: (String) -> Unit = { rawInstruction ->
+                    val instruction = rawInstruction.trim()
+                    if (instruction.isNotBlank() && !isProcessing) {
                         chatInput = ""
-
                         val userMsg = ChatMessage(
                             id = "user-${System.nanoTime()}",
                             role = ChatRole.USER,
@@ -238,38 +266,82 @@ private fun MainNavigation(
                                 role = ChatRole.SYSTEM,
                                 text = "Not connected to governance service.",
                             ))
-                            return@ChatScreen
-                        }
-
-                        scope.launch {
-                            isProcessing = true
-                            if (planner.isModelAvailable()) planner.loadModel()
-                            val orchestrator = SpeculativeOrchestrator(
-                                context, planner, ki, dispatcher, speculationLog,
-                            )
-                            val (planResult, log, _) = orchestrator.execute(instruction)
-
-                            when (planResult) {
-                                is PlanResult.Success -> {
-                                    messages.add(ChatMessage(
-                                        id = "plan-${System.nanoTime()}",
-                                        role = ChatRole.AGENT,
-                                        text = planResult.plan.summary,
-                                        plan = planResult.plan,
-                                        executionLog = log,
-                                    ))
+                        } else {
+                            scope.launch {
+                                isProcessing = true
+                                if (planner.isModelAvailable()) planner.loadModel()
+                                val orchestrator = SpeculativeOrchestrator(
+                                    context, planner, ki, dispatcher, speculationLog,
+                                )
+                                val (planResult, log, _) = orchestrator.execute(instruction)
+                                val responseText: String = when (planResult) {
+                                    is PlanResult.Success -> {
+                                        messages.add(ChatMessage(
+                                            id = "plan-${System.nanoTime()}",
+                                            role = ChatRole.AGENT,
+                                            text = planResult.plan.summary,
+                                            plan = planResult.plan,
+                                            executionLog = log,
+                                        ))
+                                        planResult.plan.summary
+                                    }
+                                    is PlanResult.Error -> {
+                                        messages.add(ChatMessage(
+                                            id = "err-${System.nanoTime()}",
+                                            role = ChatRole.AGENT,
+                                            text = planResult.message,
+                                        ))
+                                        planResult.message
+                                    }
                                 }
-                                is PlanResult.Error -> {
-                                    messages.add(ChatMessage(
-                                        id = "err-${System.nanoTime()}",
-                                        role = ChatRole.AGENT,
-                                        text = planResult.message,
-                                    ))
+                                isProcessing = false
+                                // Speak the response if voice is active. Skip
+                                // for typed messages to avoid surprising the user.
+                                if (voiceAvailable &&
+                                    (voiceState is VoiceState.Heard ||
+                                     voiceState is VoiceState.Speaking)) {
+                                    voiceController.speak(responseText)
                                 }
                             }
-                            isProcessing = false
+                        }
+                    }
+                }
+
+                // Auto-send when voice recognition lands a transcript.
+                // VoiceController's onTranscript callback already dropped
+                // the text into chatInput; this fires the same path the
+                // mic/Send button would.
+                LaunchedEffect(voiceState) {
+                    if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
+                        sendInstruction(chatInput)
+                    }
+                }
+                ChatScreen(
+                    messages = messages,
+                    isProcessing = isProcessing,
+                    modelAvailable = planner.isModelAvailable(),
+                    inputText = chatInput,
+                    onInputChange = { chatInput = it },
+                    voiceState = voiceState,
+                    voiceAvailable = voiceAvailable,
+                    onMicTap = {
+                        // Cancel mid-listen if user taps again
+                        if (voiceState is VoiceState.Listening) {
+                            voiceController.cancelListening()
+                            return@ChatScreen
+                        }
+                        // Stop TTS before listening (avoid talking over user)
+                        if (voiceState is VoiceState.Speaking) {
+                            voiceController.stopSpeaking()
+                        }
+                        // Permission gate
+                        if (voiceController.hasMicrophonePermission()) {
+                            voiceController.startListening()
+                        } else {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                         }
                     },
+                    onSend = { sendInstruction(chatInput) },
                 )
             }
         }

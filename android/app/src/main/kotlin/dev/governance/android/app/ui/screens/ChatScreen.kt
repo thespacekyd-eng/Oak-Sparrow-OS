@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -18,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.agent.*
 import dev.governance.android.app.ui.theme.BloomPalette
+import dev.governance.android.app.voice.VoiceState
 
 /**
  * Chat surface for interacting with the on-device agent.
@@ -33,6 +36,11 @@ fun ChatScreen(
     onInputChange: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    // Voice integration. Defaults make voice optional — Paparazzi
+    // snapshots and previews keep working without wiring it.
+    voiceState: VoiceState = VoiceState.Idle,
+    voiceAvailable: Boolean = false,
+    onMicTap: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
 
@@ -100,13 +108,54 @@ fun ChatScreen(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Mic button — voice input. Replaces text typing for
+                // hands-free use. Tap toggles listening; transcript is
+                // forwarded to the planner like a typed message.
+                if (voiceAvailable) {
+                    IconButton(
+                        onClick = onMicTap,
+                        enabled = !isProcessing,
+                    ) {
+                        when (voiceState) {
+                            is VoiceState.Listening -> Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = "Listening — tap to cancel",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                            is VoiceState.Speaking -> Icon(
+                                Icons.Filled.MicOff,
+                                contentDescription = "Speaking response",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                            is VoiceState.Error -> Icon(
+                                Icons.Filled.MicOff,
+                                contentDescription = "Voice error: ${voiceState.reason}",
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                            else -> Icon(
+                                Icons.Filled.Mic,
+                                contentDescription = "Tap to speak",
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(4.dp))
+                }
                 OutlinedTextField(
-                    value = inputText,
+                    value = when (val s = voiceState) {
+                        is VoiceState.Listening -> if (s.partial.isNotEmpty()) s.partial else inputText
+                        else -> inputText
+                    },
                     onValueChange = onInputChange,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask your agent...") },
+                    placeholder = {
+                        when (voiceState) {
+                            is VoiceState.Listening -> Text("Listening...")
+                            is VoiceState.Speaking -> Text("Speaking...")
+                            else -> Text("Ask your agent...")
+                        }
+                    },
                     maxLines = 3,
-                    enabled = !isProcessing,
+                    enabled = !isProcessing && voiceState !is VoiceState.Listening,
                 )
                 Spacer(Modifier.width(8.dp))
                 IconButton(
