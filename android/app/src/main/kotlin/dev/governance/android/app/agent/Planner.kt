@@ -48,14 +48,24 @@ class Planner(
     }
 
     /**
-     * Plans the user's instruction. Routes through the engine when it
-     * is loaded; otherwise falls back to the keyword router.
+     * Plans the user's instruction. Tries the keyword router first
+     * (instant — zero inference latency). Falls through to the LLM
+     * only when keywords can't parse the instruction.
+     *
+     * This gives negative latency on all common instructions: the
+     * keyword router matches in microseconds and the GatePredictor
+     * can instant-dispatch before the governance round-trip. The LLM
+     * is reserved for truly ambiguous or complex requests that the
+     * keyword patterns don't cover.
      */
     suspend fun plan(userInstruction: String): PlanResult = withContext(Dispatchers.IO) {
+        val keywordResult = planWithKeywords(userInstruction)
+        if (keywordResult is PlanResult.Success) return@withContext keywordResult
+
         if (engine.isLoaded) {
             planWithEngine(userInstruction)
         } else {
-            planWithKeywords(userInstruction)
+            keywordResult
         }
     }
 
