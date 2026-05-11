@@ -64,6 +64,8 @@ class VoiceController(
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady: Boolean = false
+    /** Tracks whether we tried the on-device recognizer and it failed. */
+    private var onDeviceFailed: Boolean = false
 
     /** Returns true if the microphone permission is currently granted. */
     fun hasMicrophonePermission(): Boolean =
@@ -165,15 +167,16 @@ class VoiceController(
     }
 
     private fun createRecognizer(): SpeechRecognizer {
-        // Prefer the explicit on-device path if available — guaranteed
-        // local. Falls back to the system default otherwise (which may
-        // route through Google's app; we still set EXTRA_PREFER_OFFLINE).
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        // Prefer the explicit on-device path if available AND it hasn't
+        // failed before (e.g. missing language pack → error 13).
+        // Falls back to the system recognizer with EXTRA_PREFER_OFFLINE.
+        return if (!onDeviceFailed &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
             Log.i(TAG, "voice: using createOnDeviceSpeechRecognizer (guaranteed local)")
             SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
         } else {
-            Log.w(TAG, "voice: on-device recognizer unavailable; falling back to system recognizer with EXTRA_PREFER_OFFLINE")
+            Log.w(TAG, "voice: using system recognizer with EXTRA_PREFER_OFFLINE")
             SpeechRecognizer.createSpeechRecognizer(context)
         }
     }
@@ -184,7 +187,10 @@ class VoiceController(
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            // Only request offline for the on-device recognizer.
+            // When falling back to the system recognizer, allow cloud
+            // for better accuracy.
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, !onDeviceFailed)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
 
@@ -220,6 +226,18 @@ class VoiceController(
         override fun onError(error: Int) {
             recognizer?.destroy()
             recognizer = null
+
+            // Error 13 = language pack missing on the on-device recognizer.
+            // Retry once with the system (cloud) recognizer.
+            if (!onDeviceFailed && (error == 13 || error == SpeechRecognizer.ERROR_SERVER)) {
+                Log.w(TAG, "voice: on-device recognizer failed ($error), retrying with system recognizer")
+                onDeviceFailed = true
+                // Reset state to allow startListening again
+                _state.value = VoiceState.Idle
+                startListening()
+                return
+            }
+
             val reason = when (error) {
                 SpeechRecognizer.ERROR_AUDIO -> "Audio recording error."
                 SpeechRecognizer.ERROR_CLIENT -> "Recognizer client error."
