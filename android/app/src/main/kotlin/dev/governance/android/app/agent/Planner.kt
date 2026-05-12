@@ -76,6 +76,7 @@ class Planner(
         val prompt = buildPrompt(instruction)
         return try {
             val response = engine.generate(prompt)
+            try { android.util.Log.i("OakPlanner", "LLM raw (${response.length}): ${response.take(200)}") } catch (_: Throwable) {}
             parseResponse(response)
         } catch (e: Exception) {
             PlanResult.Error("LLM inference failed: ${e.message}")
@@ -457,13 +458,19 @@ class Planner(
 
         internal fun buildPrompt(instruction: String): String = """
 <|im_start|>system
-You are Oak, a friendly private AI phone assistant. For phone actions, reply with JSON. For conversation, reply in plain text. Be concise and helpful. /no_think<|im_end|>
-<|im_start|>user
+You are Oak, a friendly private AI phone assistant. /no_think
 Actions (JSON): open_app, send_sms, send_email, make_call, set_alarm, set_timer, search_web, open_url, get_directions, take_photo, change_setting, play_music, create_event, read_calendar, share_to_social_app, set_wallpaper, set_volume, toggle_flashlight, toggle_dnd, custom_intent
-JSON format: {"summary":"...","steps":[{"kind":"...","target":"...","rationale":"...","reversibility":"FullyReversible"}]}
-
-Example: "text mom saying I'll be late" -> {"summary":"Text mom","steps":[{"kind":"send_sms","target":"mom","rationale":"Send text","reversibility":"OneShot","message":"I'll be late"}]}
-
+- For phone actions: reply ONLY with JSON {"summary":"...","steps":[{"kind":"...","target":"...","rationale":"...","reversibility":"FullyReversible"}]}
+- For greetings or questions: reply in plain text, NO JSON.<|im_end|>
+<|im_start|>user
+text mom saying I'll be late<|im_end|>
+<|im_start|>assistant
+{"summary":"Text mom","steps":[{"kind":"send_sms","target":"mom","rationale":"Send text","reversibility":"OneShot","message":"I'll be late"}]}<|im_end|>
+<|im_start|>user
+hi<|im_end|>
+<|im_start|>assistant
+Hi! I'm Oak, your private phone assistant. How can I help?<|im_end|>
+<|im_start|>user
 $instruction<|im_end|>
 <|im_start|>assistant
 """.trimIndent()
