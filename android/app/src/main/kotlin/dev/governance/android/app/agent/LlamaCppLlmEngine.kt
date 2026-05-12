@@ -122,8 +122,9 @@ class LlamaCppLlmEngine(
     companion object {
         private const val TAG = "OakSparrowLLM"
 
-        /** Phone-conservative context window. Qwen3-4B supports much more. */
-        const val DEFAULT_CONTEXT = 4096
+        /** Context window. 2048 is enough for planner prompts (~233 tokens)
+         *  + conversation. Saves ~80MB KV cache vs 4096. Bump if needed. */
+        const val DEFAULT_CONTEXT = 2048
 
         /** CPU-only by default. Set higher on flagship phones with capable GPUs. */
         const val DEFAULT_GPU_LAYERS = 0

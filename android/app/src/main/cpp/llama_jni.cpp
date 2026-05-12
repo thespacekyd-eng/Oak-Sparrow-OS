@@ -113,10 +113,11 @@ Java_dev_governance_android_app_agent_LlamaCppNative_nativeInit(
 
     // Create the inference context.
     // n_batch must accommodate the full prompt in a single decode call.
-    // Our planner prompts run 500-800 tokens, so 2048 gives headroom.
+    // Planner prompts are ~233 tokens; 512 gives headroom without
+    // over-allocating the compute buffer.
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx           = nCtx;
-    ctx_params.n_batch         = 2048;
+    ctx_params.n_batch         = 512;
     ctx_params.n_threads       = 4;
     ctx_params.n_threads_batch = 4;
 
