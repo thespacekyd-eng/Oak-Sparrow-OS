@@ -100,11 +100,17 @@ class Planner(
             "change_setting",
             "play_music",
             "create_event",
+            "set_wallpaper",
+            "set_volume",
+            "toggle_flashlight",
+            "toggle_dnd",
+            "custom_intent",
         )
 
         private const val UNSUPPORTED_MSG =
-            "I can't do that yet. Try: open apps, email, text, call, calendar, " +
-            "alarms, timers, search, directions, camera, settings, or music."
+            "I'm not sure how to do that. Try things like: open apps, email, text, call, " +
+            "calendar, alarms, timers, search, directions, camera, settings, music, " +
+            "wallpaper, volume, flashlight, or just ask me anything!"
 
         /** Common app names users say in plain English — these route to open_app. */
         private val APP_TRIGGERS = setOf(
@@ -324,6 +330,68 @@ class Planner(
                 ))
             }
 
+            // --- Wallpaper / Background ---
+            if (lower.contains("wallpaper") || lower.contains("background") ||
+                lower.contains("home screen image")) {
+                return PlanResult.Success(Plan(
+                    summary = "Change wallpaper",
+                    steps = listOf(PlannedStep(
+                        kind = "set_wallpaper",
+                        target = null,
+                        rationale = "Open wallpaper picker",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
+            // --- Volume ---
+            if (lower.contains("volume") && !lower.contains("setting")) {
+                val direction = when {
+                    lower.contains("up") || lower.contains("raise") || lower.contains("louder") -> "up"
+                    lower.contains("down") || lower.contains("lower") || lower.contains("quiet") -> "down"
+                    lower.contains("mute") || lower.contains("silent") -> "mute"
+                    lower.contains("max") || lower.contains("full") -> "max"
+                    else -> "up"
+                }
+                return PlanResult.Success(Plan(
+                    summary = "Volume $direction",
+                    steps = listOf(PlannedStep(
+                        kind = "set_volume",
+                        target = direction,
+                        rationale = "Adjust volume as requested",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
+            // --- Flashlight / Torch ---
+            if (lower.contains("flashlight") || lower.contains("torch") ||
+                lower.contains("flash light")) {
+                return PlanResult.Success(Plan(
+                    summary = "Toggle flashlight",
+                    steps = listOf(PlannedStep(
+                        kind = "toggle_flashlight",
+                        target = null,
+                        rationale = "Toggle flashlight",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
+            // --- Do Not Disturb ---
+            if (lower.contains("do not disturb") || lower.contains("dnd") ||
+                lower.contains("don't disturb") || lower.contains("silent mode")) {
+                return PlanResult.Success(Plan(
+                    summary = "Do Not Disturb",
+                    steps = listOf(PlannedStep(
+                        kind = "toggle_dnd",
+                        target = null,
+                        rationale = "Toggle Do Not Disturb",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
             return when {
                 lower.contains("email") || lower.contains("mail") -> {
                     val target = extractTarget(instruction)
@@ -388,52 +456,38 @@ class Planner(
         }
 
         internal fun buildPrompt(instruction: String): String = """
-You are an AI phone assistant. Convert the user's request into a JSON action plan.
+<|im_start|>system
+You are Oak, a friendly private AI phone assistant. For phone actions, reply with JSON. For conversation, reply in plain text. Be concise and helpful. /no_think<|im_end|>
+<|im_start|>user
+Actions (JSON): open_app, send_sms, send_email, make_call, set_alarm, set_timer, search_web, open_url, get_directions, take_photo, change_setting, play_music, create_event, read_calendar, share_to_social_app, set_wallpaper, set_volume, toggle_flashlight, toggle_dnd, custom_intent
+JSON format: {"summary":"...","steps":[{"kind":"...","target":"...","rationale":"...","reversibility":"FullyReversible"}]}
 
-Supported actions:
-- read_calendar (FullyReversible) — check calendar/schedule
-- send_email (OneShot) — compose and send email. Use "message" field for body.
-- share_to_social_app (FullyReversible) — open share sheet
-- open_app (FullyReversible) — launch any app by name
-- send_sms (OneShot) — send text message. Use "message" field for body.
-- make_call (FullyReversible) — open dialer with number
-- set_alarm (PartiallyReversible) — set alarm at a time
-- set_timer (PartiallyReversible) — set countdown timer
-- open_url (FullyReversible) — open a web page
-- search_web (FullyReversible) — web search
-- get_directions (FullyReversible) — navigate to a place
-- take_photo (FullyReversible) — open camera
-- change_setting (PartiallyReversible) — open device settings (wifi/bluetooth/brightness/volume/airplane/location)
-- play_music (FullyReversible) — play a song or open music
-- create_event (PartiallyReversible) — create calendar event
+Example: "text mom saying I'll be late" -> {"summary":"Text mom","steps":[{"kind":"send_sms","target":"mom","rationale":"Send text","reversibility":"OneShot","message":"I'll be late"}]}
 
-Respond with valid JSON only:
-{"summary":"brief description","steps":[{"kind":"action_kind","target":"who/what","rationale":"why","reversibility":"...","message":"optional body text"}]}
-
-Examples:
-User: text mom saying I'll be home late
-{"summary":"Text mom","steps":[{"kind":"send_sms","target":"mom","rationale":"Send text as requested","reversibility":"OneShot","message":"I'll be home late"}]}
-
-User: set an alarm for 7am
-{"summary":"Alarm at 7:00 AM","steps":[{"kind":"set_alarm","target":"7am","rationale":"Wake up alarm","reversibility":"PartiallyReversible"}]}
-
-User: navigate to the airport
-{"summary":"Directions to airport","steps":[{"kind":"get_directions","target":"airport","rationale":"User needs directions","reversibility":"FullyReversible"}]}
-
-User: turn off wifi
-{"summary":"WiFi settings","steps":[{"kind":"change_setting","target":"wifi","rationale":"User wants to toggle WiFi","reversibility":"PartiallyReversible"}]}
-
-If the user asks for something outside supported actions, respond:
-{"summary":"unsupported","steps":[]}
-
-User: $instruction
+$instruction<|im_end|>
+<|im_start|>assistant
 """.trimIndent()
 
-        /** Parses LLM JSON output into a [PlanResult]. */
+        /** Parses LLM output — JSON action plan or plain-text conversation. */
         internal fun parseResponse(response: String): PlanResult {
-            val jsonStr = Regex("\\{.*}", RegexOption.DOT_MATCHES_ALL)
-                .find(response)?.value
-                ?: return PlanResult.Error("I couldn't plan that. Can you rephrase?")
+            // Strip Qwen3 thinking tags if the model entered think mode
+            // despite /no_think. Keep only the content after </think>.
+            val cleaned = response.let { r ->
+                val thinkEnd = r.indexOf("</think>")
+                if (thinkEnd >= 0) r.substring(thinkEnd + "</think>".length).trim() else r
+            }
+
+            // Extract the first JSON object from the response.
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
+            val jsonStr = if (start >= 0 && end > start) cleaned.substring(start, end + 1) else null
+
+            // No JSON found — treat the whole response as conversational text.
+            if (jsonStr == null) {
+                val text = cleaned.trim()
+                return if (text.isNotEmpty()) PlanResult.Conversational(text)
+                else PlanResult.Error("I couldn't plan that. Can you rephrase?")
+            }
 
             return try {
                 val json = Json.parseToJsonElement(jsonStr).jsonObject

@@ -32,32 +32,31 @@ class LlmPlannerTest : FunSpec({
     }
 
     test("plan() routes through engine once loaded and parses success") {
-        val cannedJson = """{"summary":"Send email to chen","steps":[{"kind":"send_email","target":"chen","rationale":"User asked","reversibility":"OneShot"}]}"""
+        // Use an instruction the keyword router can't handle so it falls through to the engine
+        val cannedJson = """{"summary":"Create event with chen","steps":[{"kind":"create_event","target":"meeting with chen","rationale":"User asked","reversibility":"PartiallyReversible"}]}"""
         val stub = StubLlmEngine(defaultResponse = cannedJson)
         val planner = Planner(stub)
         runBlocking {
             planner.loadModel() shouldBe null
-            val result = planner.plan("email chen saying I'll be late")
+            val result = planner.plan("put a meeting with chen on my agenda tomorrow")
             result.shouldBeInstanceOf<PlanResult.Success>()
             result.plan.summary shouldContain "chen"
-            result.plan.steps[0].kind shouldBe "send_email"
-            result.plan.steps[0].target shouldBe "chen"
-            result.plan.steps[0].reversibility shouldBe Reversibility.OneShot
+            result.plan.steps[0].kind shouldBe "create_event"
         }
-        // Engine WAS asked to generate this time
+        // Engine WAS asked to generate — keyword router couldn't handle this
         stub.promptLog.size shouldBe 1
-        // Prompt includes the user's instruction
-        stub.promptLog[0] shouldContain "email chen"
+        stub.promptLog[0] shouldContain "meeting with chen"
     }
 
-    test("plan() returns Error when engine returns malformed JSON") {
-        val stub = StubLlmEngine(defaultResponse = "this is not json at all")
+    test("plan() returns Conversational when engine returns plain text") {
+        val stub = StubLlmEngine(defaultResponse = "I can help with that!")
         val planner = Planner(stub)
         runBlocking {
             planner.loadModel()
-            val result = planner.plan("anything")
-            result.shouldBeInstanceOf<PlanResult.Error>()
-            result.message shouldContain "rephrase"
+            // Instruction keyword router can't handle → falls to engine
+            val result = planner.plan("what can you do for me")
+            result.shouldBeInstanceOf<PlanResult.Conversational>()
+            result.message shouldContain "help"
         }
     }
 
@@ -125,17 +124,18 @@ class LlmPlannerTest : FunSpec({
     }
 
     test("prompt sent to engine is the buildPrompt template (contains supported actions list)") {
-        val stub = StubLlmEngine(defaultResponse = """{"summary":"Open Instagram","steps":[{"kind":"open_app","target":"instagram","rationale":"x","reversibility":"FullyReversible"}]}""")
+        // Use an instruction the keyword router can't handle so it reaches the engine
+        val stub = StubLlmEngine(defaultResponse = """{"summary":"Summarize inbox","steps":[{"kind":"read_calendar","target":null,"rationale":"x","reversibility":"FullyReversible"}]}""")
         val planner = Planner(stub)
         runBlocking {
             planner.loadModel()
-            planner.plan("pull up instagram")
+            planner.plan("summarize my day ahead")
         }
         val prompt = stub.promptLog.single()
         prompt shouldContain "read_calendar"
         prompt shouldContain "send_email"
         prompt shouldContain "share_to_social_app"
         prompt shouldContain "open_app"
-        prompt shouldContain "pull up instagram"
+        prompt shouldContain "summarize my day ahead"
     }
 })

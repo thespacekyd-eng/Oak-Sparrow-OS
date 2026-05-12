@@ -1,11 +1,15 @@
 package dev.governance.android.app.agent
 
+import android.app.WallpaperManager
 import android.content.Context
 import android.content.Intent
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.net.Uri
 import android.provider.AlarmClock
 import android.provider.MediaStore
 import android.provider.Settings
+import android.util.Log
 import dev.governance.android.platform.AccessibilityObservationService
 import dev.governance.attestation.AttestationVerifier
 import dev.governance.core.GateDecision
@@ -79,6 +83,11 @@ class ActionDispatcher(private val context: Context) {
             "change_setting" -> dispatchChangeSetting(step.target ?: "")
             "play_music" -> dispatchPlayMusic(step.target ?: "")
             "create_event" -> dispatchCreateEvent(step.target ?: "", step.message)
+            "set_wallpaper" -> dispatchSetWallpaper()
+            "set_volume" -> dispatchSetVolume(step.target ?: "")
+            "toggle_flashlight" -> dispatchToggleFlashlight()
+            "toggle_dnd" -> dispatchToggleDnd()
+            "custom_intent" -> dispatchCustomIntent(step.target ?: "", step.message)
             else -> DispatchResult.Unsupported(
                 "Action '${step.kind}' isn't yet supported. The agent will skip it."
             )
@@ -344,6 +353,110 @@ class ActionDispatcher(private val context: Context) {
             DispatchResult.Success("Calendar event creation opened for \"$target\".")
         } catch (e: Exception) {
             DispatchResult.Failed("Could not create event: ${e.message}")
+        }
+    }
+
+    private fun dispatchSetWallpaper(): DispatchResult {
+        return try {
+            val intent = Intent(Intent.ACTION_SET_WALLPAPER).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Wallpaper picker opened.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open wallpaper picker: ${e.message}")
+        }
+    }
+
+    private fun dispatchSetVolume(target: String): DispatchResult {
+        return try {
+            val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val lower = target.lowercase()
+            when {
+                lower.contains("mute") || lower.contains("silent") -> {
+                    audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, AudioManager.FLAG_SHOW_UI)
+                    DispatchResult.Success("Volume muted.")
+                }
+                lower.contains("max") || lower.contains("full") -> {
+                    val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, max, AudioManager.FLAG_SHOW_UI)
+                    DispatchResult.Success("Volume set to max.")
+                }
+                lower.contains("up") || lower.contains("raise") || lower.contains("louder") -> {
+                    audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+                    DispatchResult.Success("Volume raised.")
+                }
+                lower.contains("down") || lower.contains("lower") || lower.contains("quiet") -> {
+                    audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+                    DispatchResult.Success("Volume lowered.")
+                }
+                else -> {
+                    // Try to parse a number (0-100 scale)
+                    val pct = Regex("\\d+").find(lower)?.value?.toIntOrNull()
+                    if (pct != null) {
+                        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                        val vol = (pct * max / 100).coerceIn(0, max)
+                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, vol, AudioManager.FLAG_SHOW_UI)
+                        DispatchResult.Success("Volume set to $pct%.")
+                    } else {
+                        audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
+                        DispatchResult.Success("Volume panel shown.")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not adjust volume: ${e.message}")
+        }
+    }
+
+    private fun dispatchToggleFlashlight(): DispatchResult {
+        return try {
+            val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val cameraId = cm.cameraIdList.firstOrNull()
+                ?: return DispatchResult.Failed("No camera available.")
+            // Toggle: try to enable; if it fails, it might already be on
+            cm.setTorchMode(cameraId, true)
+            DispatchResult.Success("Flashlight turned on.")
+        } catch (e: Exception) {
+            // If already on, turning on again throws — try turning off
+            try {
+                val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                cm.setTorchMode(cm.cameraIdList.first(), false)
+                DispatchResult.Success("Flashlight turned off.")
+            } catch (_: Exception) {
+                DispatchResult.Failed("Could not toggle flashlight: ${e.message}")
+            }
+        }
+    }
+
+    private fun dispatchToggleDnd(): DispatchResult {
+        return try {
+            val intent = Intent("android.settings.ZEN_MODE_SETTINGS").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            DispatchResult.Success("Do Not Disturb settings opened.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not open DND settings: ${e.message}")
+        }
+    }
+
+    /**
+     * General-purpose intent launcher. The LLM specifies:
+     * - target = intent action (e.g., "android.intent.action.SET_WALLPAPER")
+     * - message = optional data URI
+     */
+    private fun dispatchCustomIntent(action: String, dataUri: String?): DispatchResult {
+        return try {
+            val intent = Intent(action).apply {
+                if (!dataUri.isNullOrBlank()) data = Uri.parse(dataUri)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            Log.i("ActionDispatcher", "custom_intent: action=$action data=$dataUri")
+            DispatchResult.Success("Launched: $action")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not launch intent '$action': ${e.message}")
         }
     }
 

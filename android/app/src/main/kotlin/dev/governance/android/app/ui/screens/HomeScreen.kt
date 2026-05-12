@@ -2,6 +2,7 @@ package dev.governance.android.app.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
@@ -43,6 +44,7 @@ fun HomeScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
             .padding(16.dp),
     ) {
         // Debug-only banner when not using Ed25519

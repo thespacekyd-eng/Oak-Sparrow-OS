@@ -40,16 +40,18 @@ class PlannerTest : FunSpec({
     }
 
     test("planWithKeywords returns Error for unsupported instructions") {
-        val result = Planner.planWithKeywords("open settings and change the wallpaper")
+        val result = Planner.planWithKeywords("translate this paragraph to French")
         result.shouldBeInstanceOf<PlanResult.Error>()
         result.message shouldContain "calendar"
     }
 
-    test("planWithKeywords never emits open_app or read_file") {
-        // These used to leak through before the fix
+    test("planWithKeywords routes open-app and unsupported read correctly") {
+        // "open the settings app" now correctly routes to open_app
         val openResult = Planner.planWithKeywords("open the settings app")
-        openResult.shouldBeInstanceOf<PlanResult.Error>()
+        openResult.shouldBeInstanceOf<PlanResult.Success>()
+        openResult.plan.steps[0].kind shouldBe "open_app"
 
+        // Unsupported instruction still returns Error
         val readResult = Planner.planWithKeywords("read that document")
         readResult.shouldBeInstanceOf<PlanResult.Error>()
     }
@@ -72,9 +74,10 @@ class PlannerTest : FunSpec({
         result.message shouldContain "delete file"
     }
 
-    test("parseResponse handles malformed JSON with Error") {
+    test("parseResponse handles malformed JSON as conversational") {
+        // No closing brace → no JSON extracted → treated as conversational text
         val result = Planner.parseResponse("not json at all {{{")
-        result.shouldBeInstanceOf<PlanResult.Error>()
+        result.shouldBeInstanceOf<PlanResult.Conversational>()
     }
 
     test("parseResponse handles 'unsupported' summary as Error") {
@@ -112,7 +115,7 @@ class PlannerTest : FunSpec({
         prompt shouldContain "read_calendar"
         prompt shouldContain "send_email"
         prompt shouldContain "share_to_social_app"
-        prompt shouldContain "Supported actions"
+        prompt shouldContain "Actions (JSON)"
     }
 
     // -- AuthorizationResultBridge --

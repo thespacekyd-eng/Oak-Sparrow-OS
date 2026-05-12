@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Oak & Sparrow — fetch the on-device LLM model and push it to the device.
 #
-# Downloads the configured Qwen3 GGUF from Hugging Face into a local cache,
+# Downloads Qwen3-4B (Q4_K_M) from Hugging Face into a local cache,
 # verifies the SHA-256 (if known), and adb-pushes it into the app's
 # private files directory.
+#
+# Qwen3-4B-Q4_K_M is the default model at llama.cpp b5200 (~2.5 GB).
+# For emulator / low-RAM devices, override with a smaller model:
+#   MODEL_URL=https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf \
+#   MODEL_FILENAME=Qwen3-0.6B-Q4_K_M.gguf \
+#   bash android/setup-model.sh
 #
 # Run from the repo root:
 #     bash android/setup-model.sh
@@ -72,7 +78,7 @@ if [ -f "$LOCAL_PATH" ]; then
 else
     echo "==> Downloading $MODEL_URL"
     echo "    -> $LOCAL_PATH"
-    echo "    (this is ~2.5 GB at Q4_K_M; resume-capable)"
+    echo "    (~2.5 GB for Qwen3-4B Q4_K_M; resume-capable)"
     curl --location --fail --continue-at - --output "$LOCAL_PATH" "$MODEL_URL"
 fi
 
@@ -101,7 +107,7 @@ DEVICE_DIR="/data/data/$APP_PACKAGE/files/models"
 DEVICE_PATH="$DEVICE_DIR/$MODEL_FILENAME"
 TMP_DEVICE_PATH="/data/local/tmp/$MODEL_FILENAME"
 
-echo "==> Pushing to /data/local/tmp (~3 minutes for 2.5 GB over USB 3)"
+echo "==> Pushing to /data/local/tmp (~2-3 minutes for ~2.5 GB)"
 adb push "$LOCAL_PATH" "$TMP_DEVICE_PATH"
 
 echo "==> Moving into app private storage via run-as"

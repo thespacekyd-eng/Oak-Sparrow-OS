@@ -179,6 +179,7 @@ private fun AssistantHost(
                 val (planResult, _, _) = orchestrator.execute(instruction)
                 val text: String = when (planResult) {
                     is PlanResult.Success -> planResult.plan.summary
+                    is PlanResult.Conversational -> planResult.message
                     is PlanResult.Error -> planResult.message
                 }
                 responseText.value = text

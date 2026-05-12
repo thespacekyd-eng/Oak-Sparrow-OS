@@ -2,6 +2,7 @@ package dev.governance.android.app.agent
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import dev.governance.android.app.AgentKernelInterface
 import dev.governance.android.app.AuthorizationActivity
 import dev.governance.android.platform.parcel.ProposedActionParcel
@@ -66,9 +67,13 @@ class SpeculativeOrchestrator(
         snapshot = try {
             kernel.snapshot()?.toKernel()
         } catch (_: Exception) { null }
+        val snap = snapshot
+        Log.i(TAG, "execute: snapshot=${if (snap != null) "gamma=${snap.gamma}, warmup=${snap.warmupComplete}" else "null"}")
 
         val planResult = planner.plan(userInstruction)
-        if (planResult is PlanResult.Error) return Triple(planResult, null, speculationLog)
+        if (planResult is PlanResult.Error || planResult is PlanResult.Conversational) {
+            return Triple(planResult, null, speculationLog)
+        }
 
         val plan = (planResult as PlanResult.Success).plan
         val log = ExecutionLog(plan)
@@ -81,10 +86,20 @@ class SpeculativeOrchestrator(
                 step.reversibility == Reversibility.FullyReversible
 
             if (canInstant) {
+                log.setTier(index, DispatchTier.INSTANT)
+                Log.i(TAG, "INSTANT dispatch: ${step.kind} → ${step.target} " +
+                    "(gamma=${snap?.gamma}, warmup=${snap?.warmupComplete})")
                 executeInstant(index, step, log)
             } else if (canSpeculate) {
+                log.setTier(index, DispatchTier.SPECULATIVE)
+                Log.i(TAG, "SPECULATIVE dispatch: ${step.kind} → ${step.target} " +
+                    "(gamma=${snap?.gamma}, warmup=${snap?.warmupComplete})")
                 executeSpeculative(index, step, log)
             } else {
+                log.setTier(index, DispatchTier.STRICT)
+                Log.i(TAG, "STRICT dispatch: ${step.kind} → ${step.target} " +
+                    "(gamma=${snap?.gamma}, warmup=${snap?.warmupComplete}, " +
+                    "tier=${ActionTier.classify(step.kind)}, rev=${step.reversibility})")
                 executeStrict(index, step, log)
             }
 
@@ -195,10 +210,12 @@ class SpeculativeOrchestrator(
 
         val decision = decisionDeferred.await()
         if (decision == null) {
+            Log.w(TAG, "speculative: decide() returned null (kernel error)")
             speculationLog.recordRolledBack(speculationId, "kernel error")
             log.update(index, ExecutionLog.StepState.Failed("Kernel error during gate check"))
             return@coroutineScope
         }
+        Log.i(TAG, "speculative: gate returned ${decision.outcome} for ${step.kind} (gamma=${decision.gamma})")
 
         when (decision.outcome) {
             Outcome.PASS -> {
@@ -315,9 +332,11 @@ class SpeculativeOrchestrator(
             is DispatchResult.Unsupported -> ResolvedOutcome.HarmlessFailure
         }
         try {
+            Log.d(TAG, "resolveDecision: auditId=${decision.auditId.value}, outcome=${decision.outcome}, resolved=$resolved")
             kernel.resolve(decision.auditId.value, ResolvedOutcomeParcel.from(resolved))
-        } catch (_: Exception) {
-            // Best-effort resolve
+            Log.d(TAG, "resolveDecision: success")
+        } catch (e: Exception) {
+            Log.w(TAG, "resolveDecision: failed — ${e.message}")
         }
     }
 
@@ -340,4 +359,8 @@ class SpeculativeOrchestrator(
             is DispatchResult.Failed -> ExecutionLog.StepState.Failed(result.reason)
             is DispatchResult.Unsupported -> ExecutionLog.StepState.Failed(result.reason)
         }
+
+    companion object {
+        private const val TAG = "NegativeLatency"
+    }
 }

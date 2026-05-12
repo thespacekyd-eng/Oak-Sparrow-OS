@@ -17,13 +17,14 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Pinned upstream — update only after verifying the JNI wrapper still builds
 # ---------------------------------------------------------------------------
-LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggerganov/llama.cpp.git}"
+LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}"
 
-# Pin chosen for: stable model_load_from_file + sampler_chain + vocab API,
-# pre-Vulkan-required, builds clean against NDK r26+.
-# To bump: visit https://github.com/ggerganov/llama.cpp/tags and pick a
+# Pin chosen for: Qwen3 support (requires b5092+), stable sampler_chain +
+# vocab API, builds clean against NDK r26+.
+# To bump: visit https://github.com/ggml-org/llama.cpp/tags and pick a
 # more recent build number (b####), then run this script.
-LLAMA_CPP_COMMIT="${LLAMA_CPP_COMMIT:-b4900}"
+# API note: b5200 renamed llama_kv_cache_clear -> llama_kv_self_clear.
+LLAMA_CPP_COMMIT="${LLAMA_CPP_COMMIT:-b5200}"
 
 # ---------------------------------------------------------------------------
 # Paths

@@ -25,6 +25,8 @@ data class PlannedStep(
 sealed class PlanResult {
     data class Success(val plan: Plan) : PlanResult()
     data class Error(val message: String) : PlanResult()
+    /** Free-form conversational response — no action to dispatch. */
+    data class Conversational(val message: String) : PlanResult()
 }
 
 /** Result of attempting to dispatch a single action. */
@@ -32,6 +34,16 @@ sealed class DispatchResult {
     data class Success(val summary: String) : DispatchResult()
     data class Failed(val reason: String) : DispatchResult()
     data class Unsupported(val reason: String) : DispatchResult()
+}
+
+/** Which dispatch tier the orchestrator chose for a step. */
+enum class DispatchTier {
+    /** Negative latency — action fires before gate decision. */
+    INSTANT,
+    /** Zero latency — action and gate decision run in parallel. */
+    SPECULATIVE,
+    /** Positive latency — gate decision must complete before dispatch. */
+    STRICT,
 }
 
 /**
@@ -42,11 +54,19 @@ class ExecutionLog(val plan: Plan) {
     val stepStates = mutableStateListOf<StepState>().apply {
         repeat(plan.steps.size) { add(StepState.Pending) }
     }
+    /** Dispatch tier chosen for each step (populated during execution). */
+    val stepTiers = mutableStateListOf<DispatchTier?>().apply {
+        repeat(plan.steps.size) { add(null) }
+    }
     var finished = false
         private set
 
     fun update(index: Int, state: StepState) {
         if (index in stepStates.indices) stepStates[index] = state
+    }
+
+    fun setTier(index: Int, tier: DispatchTier) {
+        if (index in stepTiers.indices) stepTiers[index] = tier
     }
 
     fun markFinished() { finished = true }

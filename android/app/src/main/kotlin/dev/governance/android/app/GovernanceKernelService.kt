@@ -51,7 +51,7 @@ class GovernanceKernelService : Service() {
     private lateinit var persistence: StatePersistence
     private lateinit var auditWriter: AndroidJsonlAuditWriter
 
-    private var currentState: GovernanceState = StatePersistence.freshDefensiveState()
+    private var currentState: GovernanceState = StatePersistence.freshDefensiveState(debugMode = BuildConfig.DEBUG)
     private val stateLock = Any()
 
     // Track recent decisions by auditId for resolve() lookups
@@ -102,7 +102,12 @@ class GovernanceKernelService : Service() {
         persistence = StatePersistence(this)
         auditWriter = AndroidJsonlAuditWriter(this)
 
-        val calibrator = DefensivePriorCalibrator(warmupThreshold = 100)
+        // Debug builds skip warmup entirely so negative latency (INSTANT
+        // dispatch) works from the first action. Release builds keep the
+        // full 100-decision defensive warmup.
+        val calibrator = DefensivePriorCalibrator(
+            warmupThreshold = if (BuildConfig.DEBUG) 0 else 100,
+        )
         kernel = DefaultGovernanceKernel(
             metrics = GateMetrics(
                 dilationFactor = DefaultDilationFactor(),
@@ -138,7 +143,7 @@ class GovernanceKernelService : Service() {
         if (restored != null) {
             currentState = restored
         } else {
-            currentState = StatePersistence.freshDefensiveState()
+            currentState = StatePersistence.freshDefensiveState(debugMode = BuildConfig.DEBUG)
             logSystemEvent("boot", "fresh defensive-prior state initialized")
         }
 

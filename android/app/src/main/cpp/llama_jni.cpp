@@ -5,11 +5,12 @@
 //   nativeGenerate(handle, prompt, params...) -> string
 //   nativeFree(handle)
 //
-// API target: llama.cpp recent (post-Nov 2024) — uses the model_load_from_file
+// API target: llama.cpp b5200 (Qwen3 support). Uses model_load_from_file
 // + sampler_chain + vocab API. If you bump the llama.cpp pin in
 // setup-llama-cpp.sh and the build breaks with "no such function", the
 // API has drifted; check llama.cpp's CHANGELOG and update the calls
 // in this file.
+// b5200 change from b4900: llama_kv_cache_clear -> llama_kv_self_clear.
 //
 // Threading: this layer is NOT thread-safe across concurrent calls
 // against the same handle. The Kotlin side serializes via Mutex.
@@ -177,7 +178,7 @@ Java_dev_governance_android_app_agent_LlamaCppNative_nativeGenerate(
     LOGI("nativeGenerate: prompt %d tokens, max_new=%d", n_tokens, maxTokens);
 
     // Reset KV cache for a fresh single-turn generation.
-    llama_kv_cache_clear(lc->ctx);
+    llama_kv_self_clear(lc->ctx);
 
     // Sampler chain: top-k -> top-p -> temp -> repeat-penalty -> dist
     auto sparams = llama_sampler_chain_default_params();

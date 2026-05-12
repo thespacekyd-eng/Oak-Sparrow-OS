@@ -128,8 +128,8 @@ class LlamaCppLlmEngine(
         /** CPU-only by default. Set higher on flagship phones with capable GPUs. */
         const val DEFAULT_GPU_LAYERS = 0
 
-        /** Max output tokens per generate call. Plans are short. */
-        const val MAX_TOKENS = 1024
+        /** Max output tokens per generate call. Plans are short; conversations kept moderate. */
+        const val MAX_TOKENS = 512
 
         const val TEMPERATURE = 0.7f
         const val TOP_P = 0.9f

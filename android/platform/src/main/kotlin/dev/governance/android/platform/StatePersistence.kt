@@ -69,8 +69,12 @@ class StatePersistence(private val stateDir: File) {
          * Fresh defensive-prior state for first boot or corruption recovery.
          * Matches the kernel's test fixtures.
          */
-        fun freshDefensiveState(): GovernanceState = GovernanceState(
-            gamma = 0.85,
+        /**
+         * @param debugMode when true, starts with gamma=0.3 so negative latency
+         *   is reachable after just a few benign decisions. Production starts at 0.85.
+         */
+        fun freshDefensiveState(debugMode: Boolean = false): GovernanceState = GovernanceState(
+            gamma = if (debugMode) 0.30 else 0.85,
             referenceEnvelope = ReferenceEnvelope(
                 center = listOf(0.7, 0.2, 0.1),
                 radius = 2.0,

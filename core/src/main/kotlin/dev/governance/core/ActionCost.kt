@@ -55,6 +55,13 @@ object ActionCostRegistry {
         "send_email"          to ActionCost(2.5, "Send message to specific recipient"),
         "send_sms"            to ActionCost(2.5, "Send text message"),
 
+        // Device controls
+        "set_wallpaper"       to ActionCost(1.5, "Change device wallpaper"),
+        "set_volume"          to ActionCost(1.0, "Adjust media volume"),
+        "toggle_flashlight"   to ActionCost(1.0, "Toggle camera flashlight"),
+        "toggle_dnd"          to ActionCost(1.5, "Toggle Do Not Disturb"),
+        "custom_intent"       to ActionCost(2.0, "Launch arbitrary Android intent"),
+
         // High-impact: broad or public exposure
         "share_to_social_app" to ActionCost(4.0, "Public or semi-public social post"),
 

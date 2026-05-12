@@ -210,7 +210,8 @@ private fun AgentBubble(message: ChatMessage) {
                     Spacer(Modifier.height(8.dp))
                     log.plan.steps.forEachIndexed { i, step ->
                         val state = log.stepStates.getOrNull(i) ?: ExecutionLog.StepState.Pending
-                        StepRow(i + 1, step, state)
+                        val tier = log.stepTiers.getOrNull(i)
+                        StepRow(i + 1, step, state, tier)
                     }
                 }
             }
@@ -219,7 +220,7 @@ private fun AgentBubble(message: ChatMessage) {
 }
 
 @Composable
-private fun StepRow(number: Int, step: PlannedStep, state: ExecutionLog.StepState) {
+private fun StepRow(number: Int, step: PlannedStep, state: ExecutionLog.StepState, tier: DispatchTier? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -240,10 +241,30 @@ private fun StepRow(number: Int, step: PlannedStep, state: ExecutionLog.StepStat
 
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                "${step.kind.replace('_', ' ')}${if (step.target != null) " → ${step.target}" else ""}",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${step.kind.replace('_', ' ')}${if (step.target != null) " → ${step.target}" else ""}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                // Dispatch tier badge
+                if (tier != null) {
+                    Spacer(Modifier.width(6.dp))
+                    val (label, color) = when (tier) {
+                        DispatchTier.INSTANT -> "INSTANT" to BloomPalette.TrustGreen
+                        DispatchTier.SPECULATIVE -> "SPEC" to BloomPalette.WarnAmber
+                        DispatchTier.STRICT -> "STRICT" to MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = color,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(color.copy(alpha = 0.12f))
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                    )
+                }
+            }
             // Show result detail for completed states
             val detail = when (state) {
                 is ExecutionLog.StepState.Done -> state.result

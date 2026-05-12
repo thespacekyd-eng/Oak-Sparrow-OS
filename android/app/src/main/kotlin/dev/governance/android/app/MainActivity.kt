@@ -285,6 +285,14 @@ private fun MainNavigation(
                                         ))
                                         planResult.plan.summary
                                     }
+                                    is PlanResult.Conversational -> {
+                                        messages.add(ChatMessage(
+                                            id = "chat-${System.nanoTime()}",
+                                            role = ChatRole.AGENT,
+                                            text = planResult.message,
+                                        ))
+                                        planResult.message
+                                    }
                                     is PlanResult.Error -> {
                                         messages.add(ChatMessage(
                                             id = "err-${System.nanoTime()}",

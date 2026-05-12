@@ -22,6 +22,9 @@ android {
 
         // On-device LLM: open-source, commercial-friendly, sideloaded via
         // android/setup-model.sh. Keep these in sync with that script.
+        // Qwen3-4B-Q4_K_M at llama.cpp b5200 (Qwen3 requires b5092+).
+        // 2.5 GB model — fits on modern phones (8 GB+ RAM). For emulator
+        // or low-RAM devices, override with Qwen3-0.6B via setup-model.sh.
         buildConfigField("String", "MODEL_URL",
             "\"https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf\"")
         buildConfigField("String", "MODEL_FILENAME",
