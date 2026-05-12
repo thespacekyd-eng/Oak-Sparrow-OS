@@ -1,2 +1,4 @@
 .android/
 .cache/
+.git-old/
+**/.git-old/

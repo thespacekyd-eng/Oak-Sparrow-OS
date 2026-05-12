@@ -1,0 +1,24 @@
+Add cost-weighted gamma bias and safety margins
+
+- ActionCost / ActionCostRegistry: per-action-kind impact weight with
+  log-scaled gamma bias contribution. Default sensitivity 0.05.
+- SafetyMargin: normalized distance from each decision threshold.
+  Computed alongside every gate decision; informational only.
+- CompositeGate: applies cost bias additively with reversibility bias.
+  Margins computed eagerly so they're available on every return path.
+- GateResult, GateDecision, DecisionSigner: thread riskWeight + margins
+  through the decision pipeline. Default values keep existing callers
+  (PreviewKernelState, monotonicity/time-anomaly early returns) working.
+- DecisionSigner: riskWeight and margins are excluded from the signed
+  PreDecision payload — they're derivable from signed values + gate
+  constants, so anyone can recompute them.
+
+Tests: +7 ActionCostTest, +6 SafetyMarginTest, +6 CostWeightedGateTest.
+Total: +19 JVM tests, no existing test files modified.
+
+Castro Canon grep: zero matches.
+
+Authorized by user in Cowork session 2026-05-11 after stop-and-ask
+review. Verified by Claude Code via ./gradlew check before commit.
+
+Co-Authored-By: Claude (Cowork) <noreply@anthropic.com>
