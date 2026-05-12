@@ -1,0 +1,9 @@
+# File contexts for the Oak & Sparrow governance kernel.
+#
+# Labels the audit log + state directories so the SELinux policy in
+# governance_kernel.te can grant the governance_kernel domain access
+# to them and only them.
+
+/data/governance(/.*)?           u:object_r:governance_data_file:s0
+/data/governance/audit(/.*)?     u:object_r:governance_data_file:s0
+/data/governance/state(/.*)?     u:object_r:governance_data_file:s0
