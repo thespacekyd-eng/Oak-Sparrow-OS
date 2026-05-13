@@ -1,0 +1,6 @@
+# SE Android app contexts for the Oak & Sparrow governance kernel.
+#
+# Maps the dev.governance.android package to the governance_kernel
+# domain so the SELinux policy applies to the running app process.
+
+user=system seinfo=platform name=dev.governance.android domain=governance_kernel type=governance_data_file levelFrom=user

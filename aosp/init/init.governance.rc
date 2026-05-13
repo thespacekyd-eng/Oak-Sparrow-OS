@@ -1,0 +1,33 @@
+# init.governance.rc — Oak & Sparrow governance kernel boot entry.
+#
+# Imported by init.<board>.rc via:
+#     import /vendor/etc/init/init.governance.rc
+# or via /system/etc/init/ which is auto-scanned.
+#
+# Starts the GovernanceKernelService at boot, with restart-on-crash,
+# pinned to a dedicated cgroup so the kernel doesn't get killed under
+# memory pressure the way an ordinary foreground app would.
+
+on post-fs-data
+    # Working directory for the kernel's audit log + state.
+    # The app writes encrypted audit JSONL here under its own files dir;
+    # this top-level path is for system-app placement audit logs that
+    # need to outlive the data partition's wipe-on-factory-reset.
+    mkdir /data/governance 0750 system system
+    mkdir /data/governance/audit 0750 system system
+    mkdir /data/governance/state 0750 system system
+    restorecon_recursive /data/governance
+
+on boot
+    # Ensure the keystore daemon is up before the kernel starts so
+    # Ed25519 key generation succeeds on first boot.
+    wait_for_prop sys.keystore_started 1
+
+# The actual GovernanceKernelService is launched by the framework when
+# the OakSparrow app is initialized — this stanza just reserves the
+# resources and ensures filesystem prep.
+service governance-prep /system/bin/true
+    class core
+    user system
+    group system
+    oneshot

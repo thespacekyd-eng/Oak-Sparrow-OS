@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Oak &amp; Sparrow</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_name">Governance Service</string>
+    <string name="notification_channel_description">Shows when agent governance is active</string>
+    <string name="notification_title">Oak &amp; Sparrow</string>
+    <string name="notification_text_ambient">Agent governance is on</string>
+    <string name="notification_text_active">Agent is working</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_decisions">Activity</string>
+    <string name="nav_permissions">Apps</string>
+    <string name="nav_technical">Details</string>
+
+    <!-- Home screen -->
+    <string name="home_working_well">Agent is working well</string>
+    <string name="home_needs_attention">Agent needs your attention</string>
+    <string name="home_approved_today">approved</string>
+    <string name="home_asked_today">asked you</string>
+    <string name="home_blocked_today">blocked</string>
+    <string name="home_observations">%1$d observations</string>
+    <string name="home_all_clear">all clear</string>
+    <string name="home_errors_detected">%1$d errors detected</string>
+    <string name="home_see_details">see details</string>
+    <string name="home_recent_activity">Recent activity</string>
+    <string name="home_onboarding_banner">Governance is impaired without accessibility access</string>
+    <string name="home_grant_access">Grant access</string>
+
+    <!-- Authorization (HOLD confirmation) -->
+    <string name="auth_skip">Skip</string>
+    <string name="auth_approve">Approve</string>
+    <string name="auth_verified">Verified by your phone</string>
+    <string name="auth_verified_irreversible">Verified by your phone \u00b7 cannot be undone</string>
+    <string name="auth_verification_failed">Your phone couldn\'t verify this came from your agent. Activity is paused until this is resolved.</string>
+    <string name="auth_diagnose">Diagnose</string>
+    <string name="auth_body_template">Your agent wants to %1$s.</string>
+    <string name="auth_body_irreversible">Your agent wants to %1$s. This can\'t be undone.</string>
+
+    <!-- Action kind templates -->
+    <string name="action_send_email">Send %1$s?</string>
+    <string name="action_post_social">Post to %1$s?</string>
+    <string name="action_schedule_event">Schedule %1$s?</string>
+    <string name="action_delete_file">Delete %1$s?</string>
+    <string name="action_send_message">Send %1$s?</string>
+    <string name="action_make_payment">Make %1$s?</string>
+    <string name="action_read_file">Read %1$s?</string>
+    <string name="action_read_contacts">Access your contacts?</string>
+    <string name="action_write_file">Save %1$s?</string>
+    <string name="action_open_app">Open %1$s?</string>
+    <string name="action_create_account">Create an account on %1$s?</string>
+    <string name="action_sign_document">Sign %1$s?</string>
+    <string name="action_share_to_social">Share to %1$s?</string>
+    <string name="action_read_calendar">Check %1$s?</string>
+    <string name="action_fallback">Approve action: %1$s?</string>
+
+    <!-- Chat -->
+    <string name="nav_chat">Chat</string>
+
+    <!-- Recent decisions -->
+    <string name="decisions_title">Recent activity</string>
+    <string name="decisions_verify">Verify</string>
+    <string name="decisions_verified">Verified</string>
+    <string name="decisions_verification_failed">Verification failed</string>
+    <string name="decisions_held_because">Held because %1$s</string>
+    <string name="decisions_blocked_because">Blocked because %1$s</string>
+    <string name="decisions_approved">Approved</string>
+    <string name="decisions_attestation_prefix">Attestation: %1$s</string>
+
+    <!-- App permissions -->
+    <string name="permissions_title">App permissions</string>
+    <string name="permissions_full">Full</string>
+    <string name="permissions_scoped">Scoped</string>
+    <string name="permissions_denied">Denied</string>
+
+    <!-- Technical detail -->
+    <string name="technical_title">Technical details</string>
+    <string name="technical_gamma_trajectory">Gamma trajectory (24h)</string>
+    <string name="technical_attestation_chain">Attestation chain status</string>
+    <string name="technical_all_verified">100% verified (last 24h)</string>
+    <string name="technical_verification_problem">Verification problem at %1$s</string>
+    <string name="technical_calibrator">Calibrator state</string>
+    <string name="technical_mode">Mode</string>
+    <string name="technical_warmup">Warmup</string>
+    <string name="technical_steady">Steady</string>
+    <string name="technical_decisions_observed">Decisions observed</string>
+    <string name="technical_current_gamma">Current gamma</string>
+    <string name="technical_envelope">Reference envelope</string>
+    <string name="technical_system_events">System events</string>
+    <string name="technical_capabilities">Capability registry</string>
+
+    <!-- Verification failure -->
+    <string name="verification_failure_title">Verification failed</string>
+    <string name="verification_failure_body">Your phone couldn\'t verify this came from your agent. Activity is paused until this is resolved.</string>
+    <string name="verification_failure_diagnose">Diagnose</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title_1">Agent governance</string>
+    <string name="onboarding_body_1">Oak &amp; Sparrow reviews every action an AI agent proposes on your behalf before it executes. Actions are scored, and risky ones are held for your review.</string>
+    <string name="onboarding_title_2">Accessibility access</string>
+    <string name="onboarding_body_2">To verify that agent actions actually completed as reported, we need accessibility service access. This lets us confirm outcomes without trusting the agent\'s self-reports.</string>
+    <string name="onboarding_title_3">Notifications</string>
+    <string name="onboarding_body_3">We need notification permission to show you when agent actions need your approval and to display the governance status.</string>
+    <string name="btn_next">Next</string>
+    <string name="btn_open_settings">Open Settings</string>
+    <string name="btn_grant">Grant</string>
+    <string name="btn_skip">Skip</string>
+    <string name="btn_get_started">Get Started</string>
+
+    <!-- Verified badge -->
+    <string name="badge_verified">Verified</string>
+</resources>

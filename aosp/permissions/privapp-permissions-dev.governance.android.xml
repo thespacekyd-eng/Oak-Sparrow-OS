@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Privileged-permission allowlist for the Oak & Sparrow governance kernel.
+
+    Apps installed under /system/priv-app must declare which signature|privileged
+    permissions they want here, otherwise AOSP's permission policy denies them
+    even if the manifest requests them. This is the AOSP audit surface for
+    "what dangerous things can this privileged app do?"
+
+    Drop under /etc/permissions/ in the system image (or vendor/etc/permissions/
+    if installed via vendor partition).
+-->
+<permissions>
+    <privapp-permissions package="dev.governance.android">
+
+        <!-- Settings put for allowlisted (namespace, key) pairs. -->
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+        <permission name="android.permission.WRITE_SETTINGS"/>
+
+        <!-- Package install/uninstall via PackageInstaller. -->
+        <permission name="android.permission.INSTALL_PACKAGES"/>
+        <permission name="android.permission.DELETE_PACKAGES"/>
+
+        <!-- Network control — toggle wifi/airplane mode/bluetooth. -->
+        <permission name="android.permission.NETWORK_SETTINGS"/>
+        <permission name="android.permission.CHANGE_WIFI_STATE"/>
+        <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
+
+        <!-- Foreground service for the always-on kernel. -->
+        <permission name="android.permission.FOREGROUND_SERVICE"/>
+        <permission name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+
+        <!-- Trusted overlay for the auth dialog (privileged path so
+             other apps can't draw on top of it). -->
+        <permission name="android.permission.SYSTEM_ALERT_WINDOW"/>
+        <permission name="android.permission.INTERNAL_SYSTEM_WINDOW"/>
+
+        <!-- Accessibility for outcome observation + agent action dispatch. -->
+        <permission name="android.permission.BIND_ACCESSIBILITY_SERVICE"/>
+        <permission name="android.permission.MANAGE_ACCESSIBILITY"/>
+
+        <!-- Read package metadata for open_app dispatch. -->
+        <permission name="android.permission.QUERY_ALL_PACKAGES"/>
+
+        <!-- Notifications. -->
+        <permission name="android.permission.POST_NOTIFICATIONS"/>
+
+    </privapp-permissions>
+</permissions>

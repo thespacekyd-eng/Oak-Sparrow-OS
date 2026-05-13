@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">Observes agent action outcomes for governance verification. Does not collect personal data.</string>
+</resources>

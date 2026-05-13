@@ -1,0 +1,84 @@
+package dev.governance.android.app.agent
+
+import androidx.compose.runtime.mutableStateListOf
+import dev.governance.core.Reversibility
+
+/**
+ * A plan produced by the LLM planner: a summary and ordered
+ * list of actions to execute.
+ */
+data class Plan(
+    val summary: String,
+    val steps: List<PlannedStep>,
+)
+
+data class PlannedStep(
+    val kind: String,
+    val target: String?,
+    val rationale: String,
+    val reversibility: Reversibility,
+    /** Optional message body for email/sms actions. */
+    val message: String? = null,
+)
+
+/** Result of attempting to plan from a user instruction. */
+sealed class PlanResult {
+    data class Success(val plan: Plan) : PlanResult()
+    data class Error(val message: String) : PlanResult()
+    /** Free-form conversational response — no action to dispatch. */
+    data class Conversational(val message: String) : PlanResult()
+}
+
+/** Result of attempting to dispatch a single action. */
+sealed class DispatchResult {
+    data class Success(val summary: String) : DispatchResult()
+    data class Failed(val reason: String) : DispatchResult()
+    data class Unsupported(val reason: String) : DispatchResult()
+}
+
+/** Which dispatch tier the orchestrator chose for a step. */
+enum class DispatchTier {
+    /** Negative latency — action fires before gate decision. */
+    INSTANT,
+    /** Zero latency — action and gate decision run in parallel. */
+    SPECULATIVE,
+    /** Positive latency — gate decision must complete before dispatch. */
+    STRICT,
+}
+
+/**
+ * Observable execution state for a plan. The chat UI observes
+ * [stepStates] to render per-step status in real time.
+ */
+class ExecutionLog(val plan: Plan) {
+    val stepStates = mutableStateListOf<StepState>().apply {
+        repeat(plan.steps.size) { add(StepState.Pending) }
+    }
+    /** Dispatch tier chosen for each step (populated during execution). */
+    val stepTiers = mutableStateListOf<DispatchTier?>().apply {
+        repeat(plan.steps.size) { add(null) }
+    }
+    var finished = false
+        private set
+
+    fun update(index: Int, state: StepState) {
+        if (index in stepStates.indices) stepStates[index] = state
+    }
+
+    fun setTier(index: Int, tier: DispatchTier) {
+        if (index in stepTiers.indices) stepTiers[index] = tier
+    }
+
+    fun markFinished() { finished = true }
+
+    sealed class StepState {
+        data object Pending : StepState()
+        data object GateChecking : StepState()
+        data object AwaitingApproval : StepState()
+        data object Executing : StepState()
+        data class Done(val result: String) : StepState()
+        data class Failed(val reason: String) : StepState()
+        data class Skipped(val reason: String) : StepState()
+        data class Vetoed(val reason: String) : StepState()
+    }
+}
