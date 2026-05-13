@@ -114,4 +114,19 @@ object GatePredictor {
         val prediction = predict(step, snapshot)
         return prediction.outcome == Outcome.PASS && prediction.confidence == Confidence.HIGH
     }
+
+    /**
+     * Whether the orchestrator should use speculative (zero latency) dispatch
+     * even during warmup. This is less aggressive than instant dispatch:
+     * the kernel decision runs in parallel, and the action is rolled back
+     * on VETO. Safe because FullyReversible + App tier = worst case is
+     * "we opened an app and then closed it."
+     */
+    fun shouldSpeculateDuringWarmup(step: PlannedStep, snapshot: GovernanceSnapshot): Boolean {
+        if (step.reversibility != Reversibility.FullyReversible) return false
+        if (ActionTier.classify(step.kind) != ActionTier.App) return false
+        val prediction = predict(step, snapshot)
+        // Speculate even during warmup if gamma is reasonable (below HOLD)
+        return prediction.outcome == Outcome.PASS
+    }
 }

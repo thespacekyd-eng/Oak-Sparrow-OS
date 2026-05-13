@@ -107,11 +107,31 @@ private fun MainNavigation(
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var chatInput by remember { mutableStateOf("") }
     var isProcessing by remember { mutableStateOf(false) }
-    // Production wiring: llama.cpp + Qwen3-4B (Apache 2.0). Falls back to
-    // keyword routing if the .so isn't built (NDK setup not run) or the
-    // model file isn't pushed yet. See android/MODEL_SETUP.md.
-    val planner = remember { Planner(LlamaCppLlmEngine(context)) }
-    val dispatcher = remember { ActionDispatcher(context) }
+    // Hybrid wiring: Cloud LLM (Claude) for reasoning quality + on-device
+    // llama.cpp for offline fallback. Cloud calls are PII-stripped by
+    // PiiSanitizer before leaving the device. The keyword router runs
+    // first (negative latency) — cloud is only hit for complex requests.
+    // If no API key is configured, falls through to on-device only.
+    val planner = remember {
+        val cloud = CloudLlmEngine(
+            apiKey = BuildConfig.CLOUD_API_KEY,
+            model = BuildConfig.CLOUD_MODEL,
+        )
+        val local = LlamaCppLlmEngine(context)
+        val hybrid = HybridLlmEngine(
+            cloud = cloud,
+            local = local,
+            cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank(),
+        )
+        Planner(hybrid)
+    }
+    val dispatcher = remember {
+        val cloud = CloudLlmEngine(
+            apiKey = BuildConfig.CLOUD_API_KEY,
+            model = BuildConfig.CLOUD_MODEL,
+        )
+        ActionDispatcher(context, agentLoopEngine = cloud)
+    }
     val speculationLog = remember { SpeculationLog() }
     val scope = rememberCoroutineScope()
 
@@ -233,7 +253,15 @@ private fun MainNavigation(
                                 "then re-open the chat. Falling back to keyword router."
                             else -> {
                                 val loadResult = planner.loadModel()
-                                loadResult ?: "On-device LLM ready (${BuildConfig.MODEL_NAME})."
+                                if (loadResult != null) {
+                                    loadResult
+                                } else if (BuildConfig.CLOUD_API_KEY.isNotBlank()) {
+                                    "Hybrid mode: Cloud LLM (${BuildConfig.CLOUD_MODEL}) + " +
+                                    "on-device fallback (${BuildConfig.MODEL_NAME}). " +
+                                    "PII stripped before cloud egress."
+                                } else {
+                                    "On-device LLM ready (${BuildConfig.MODEL_NAME})."
+                                }
                             }
                         }
                         messages.add(ChatMessage(

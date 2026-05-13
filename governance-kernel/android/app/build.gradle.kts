@@ -34,6 +34,18 @@ android {
         buildConfigField("String", "MODEL_LICENSE",
             "\"Apache-2.0\"")
 
+        // Cloud LLM (hybrid mode). API key from local.properties (gitignored)
+        // or gradle.properties. Empty = cloud disabled, fully on-device.
+        val apiKey = providers.gradleProperty("ANTHROPIC_API_KEY").orNull
+            ?: rootProject.file("local.properties").takeIf { it.exists() }
+                ?.readLines()
+                ?.firstOrNull { it.startsWith("ANTHROPIC_API_KEY=") }
+                ?.substringAfter("=")
+            ?: ""
+        buildConfigField("String", "CLOUD_API_KEY", "\"$apiKey\"")
+        buildConfigField("String", "CLOUD_MODEL",
+            "\"claude-opus-4-6\"")
+
         // Native build of liboaksparrow_llm.so (wraps llama.cpp).
         // Restrict ABIs to arm64 (modern phones) and x86_64 (emulator) to
         // keep APK size reasonable.

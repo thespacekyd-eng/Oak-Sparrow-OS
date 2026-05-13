@@ -106,6 +106,7 @@ class Planner(
             "toggle_flashlight",
             "toggle_dnd",
             "custom_intent",
+            "ui_interact",
         )
 
         private const val UNSUPPORTED_MSG =
@@ -119,6 +120,7 @@ class Planner(
             "youtube", "yt", "maps", "settings", "spotify", "twitter", "whatsapp",
             "tiktok", "discord", "slack", "photos", "camera", "files",
             "clock", "calculator", "contacts", "phone", "notes", "drive",
+            "play store", "store",
         )
 
         /**
@@ -127,6 +129,34 @@ class Planner(
          */
         internal fun planWithKeywords(instruction: String): PlanResult {
             val lower = instruction.lowercase()
+
+            // download/install routing → open Play Store
+            if (lower.contains("download ") || lower.contains("install ") ||
+                lower.contains("get the app") || lower.contains("get an app")) {
+                return PlanResult.Success(Plan(
+                    summary = "Open Play Store",
+                    steps = listOf(PlannedStep(
+                        kind = "open_app",
+                        target = "play store",
+                        rationale = "Open Play Store to download/install app",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
+            // "check email/inbox" → open Gmail (not send_email)
+            if ((lower.contains("check") || lower.contains("read") || lower.contains("look at")) &&
+                (lower.contains("email") || lower.contains("inbox") || lower.contains("mail"))) {
+                return PlanResult.Success(Plan(
+                    summary = "Check email",
+                    steps = listOf(PlannedStep(
+                        kind = "open_app",
+                        target = "gmail",
+                        rationale = "Open email app to check inbox",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
 
             // open_app routing: "open instagram", "launch chrome", "pull up gmail",
             // "show me youtube". Detected by an open-verb keyword PLUS a known app name.
@@ -459,13 +489,30 @@ class Planner(
         internal fun buildPrompt(instruction: String): String = """
 <|im_start|>system
 You are Oak, a friendly private AI phone assistant. /no_think
-Actions (JSON): open_app, send_sms, send_email, make_call, set_alarm, set_timer, search_web, open_url, get_directions, take_photo, change_setting, play_music, create_event, read_calendar, share_to_social_app, set_wallpaper, set_volume, toggle_flashlight, toggle_dnd, custom_intent
-- For phone actions: reply ONLY with JSON {"summary":"...","steps":[{"kind":"...","target":"...","rationale":"...","reversibility":"FullyReversible"}]}
-- For greetings or questions: reply in plain text, NO JSON.<|im_end|>
+You can ONLY use these actions: open_app, send_sms, send_email, make_call, set_alarm, set_timer, search_web, open_url, get_directions, take_photo, change_setting, play_music, create_event, read_calendar, share_to_social_app, set_wallpaper, set_volume, toggle_flashlight, toggle_dnd, custom_intent, ui_interact
+IMPORTANT: You must NEVER invent new action kinds. If the user asks for something, figure out how to do it with the actions above:
+- "download/install an app" → open_app with target "play store"
+- "check email/inbox" → open_app with target "gmail"
+- "delete X" → You cannot do this. Explain politely in plain text.
+- "remind me" → set_alarm or create_event
+- "find nearby X" → get_directions or search_web
+- Complex multi-step tasks (like posts, scroll feeds, fill forms) → open_app first, then ui_interact with target describing the task
+  Example: "like 3 music posts on instagram" → [{"kind":"open_app","target":"instagram"}, {"kind":"ui_interact","target":"like 3 music-related posts"}]
+For phone actions: reply ONLY with JSON {"summary":"...","steps":[{"kind":"...","target":"...","rationale":"...","reversibility":"FullyReversible"}]}
+For greetings or questions: reply in plain text, NO JSON.
+Reversibility values: FullyReversible (read-only, open app), PartiallyReversible (alarms, events), OneShot (send message/email), Irreversible (delete).<|im_end|>
 <|im_start|>user
 text mom saying I'll be late<|im_end|>
 <|im_start|>assistant
 {"summary":"Text mom","steps":[{"kind":"send_sms","target":"mom","rationale":"Send text","reversibility":"OneShot","message":"I'll be late"}]}<|im_end|>
+<|im_start|>user
+download tiktok<|im_end|>
+<|im_start|>assistant
+{"summary":"Open Play Store to download TikTok","steps":[{"kind":"open_app","target":"play store","rationale":"Open Play Store so user can install TikTok","reversibility":"FullyReversible"}]}<|im_end|>
+<|im_start|>user
+check my email<|im_end|>
+<|im_start|>assistant
+{"summary":"Open Gmail","steps":[{"kind":"open_app","target":"gmail","rationale":"Open email app to check inbox","reversibility":"FullyReversible"}]}<|im_end|>
 <|im_start|>user
 hi<|im_end|>
 <|im_start|>assistant

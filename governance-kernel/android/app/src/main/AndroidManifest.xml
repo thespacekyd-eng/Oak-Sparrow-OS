@@ -7,6 +7,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+        INTERNET: governance-kernel-gated. Only used when the user opts
+        into cloud LLM inference (hybrid mode). All requests are PII-
+        stripped by PiiSanitizer before leaving the device. The kernel
+        audit log records every cloud egress. Users who decline cloud
+        mode get fully on-device inference with no network egress — the
+        permission is present but never exercised.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
         Voice input. Required by VoiceController for SpeechRecognizer.
         We use createOnDeviceSpeechRecognizer (API 31+) when available
         to keep recognition local. The absence of INTERNET permission
@@ -44,6 +54,13 @@
         <package android:name="com.google.android.apps.photos" />
         <package android:name="com.android.camera" />
         <package android:name="com.google.android.apps.nbu.files" />
+        <package android:name="com.android.vending" />
+        <package android:name="com.google.android.deskclock" />
+        <package android:name="com.google.android.calculator" />
+        <package android:name="com.google.android.contacts" />
+        <package android:name="com.google.android.dialer" />
+        <package android:name="com.google.android.keep" />
+        <package android:name="com.google.android.apps.docs" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -61,6 +78,8 @@
     <application
         android:name=".GovernanceApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
@@ -112,6 +131,21 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="agent_governance" />
+        </service>
+
+        <!--
+            VPN service for system-wide network governance. Routes ALL
+            device traffic through the governance kernel for inspection,
+            tracker blocking, and audit logging. Runs entirely on-device —
+            no remote VPN server. User must approve via Android system dialog.
+        -->
+        <service
+            android:name=".GovernanceVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
         </service>
 
     </application>

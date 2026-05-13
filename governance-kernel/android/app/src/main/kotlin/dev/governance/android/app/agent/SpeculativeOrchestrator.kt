@@ -81,9 +81,12 @@ class SpeculativeOrchestrator(
         for ((index, step) in plan.steps.withIndex()) {
             val snap = snapshot
             val canInstant = snap != null && GatePredictor.shouldInstantDispatch(step, snap)
-            val canSpeculate = !canInstant &&
-                ActionTier.classify(step.kind) == ActionTier.App &&
-                step.reversibility == Reversibility.FullyReversible
+            // Allow speculative dispatch during warmup for safe actions
+            val canSpeculate = !canInstant && snap != null && (
+                (ActionTier.classify(step.kind) == ActionTier.App &&
+                    step.reversibility == Reversibility.FullyReversible) ||
+                GatePredictor.shouldSpeculateDuringWarmup(step, snap)
+            )
 
             if (canInstant) {
                 log.setTier(index, DispatchTier.INSTANT)

@@ -115,7 +115,7 @@ class PlannerTest : FunSpec({
         prompt shouldContain "read_calendar"
         prompt shouldContain "send_email"
         prompt shouldContain "share_to_social_app"
-        prompt shouldContain "Actions (JSON)"
+        prompt shouldContain "ONLY use these actions"
     }
 
     // -- AuthorizationResultBridge --

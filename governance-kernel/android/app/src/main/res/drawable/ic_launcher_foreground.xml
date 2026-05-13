@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Oak & Sparrow OS — launcher icon foreground layer.
+     Shield outline with oak leaf + sparrow in flight.
+     Safe zone: 66dp centered in 108dp viewport (inset 21dp each side). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Shield outline — governance/protection -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C8A96E"
+        android:strokeWidth="1.8"
+        android:pathData="M54,26
+            C54,26 36,28 30,32
+            C30,32 28,50 30,60
+            C32,70 40,78 54,84
+            C68,78 76,70 78,60
+            C80,50 78,32 78,32
+            C72,28 54,26 54,26Z" />
+
+    <!-- Oak leaf — stylized, left side of shield interior -->
+    <path
+        android:fillColor="#C8A96E"
+        android:pathData="M44,42
+            C42,44 40,48 41,52
+            C42,54 44,56 44,58
+            C44,60 43,62 44,64
+            C45,66 47,67 48,66
+            C49,65 48,63 49,61
+            C50,59 52,58 52,56
+            C52,54 51,52 50,50
+            C49,48 47,44 46,42
+            C45.5,41 44.5,41.5 44,42Z" />
+
+    <!-- Oak leaf stem -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C8A96E"
+        android:strokeWidth="1.2"
+        android:pathData="M46,66 L44,72" />
+
+    <!-- Sparrow in flight — right side, dynamic upward motion -->
+    <group
+        android:translateX="56"
+        android:translateY="46">
+        <!-- Body -->
+        <path
+            android:fillColor="#E8D5B0"
+            android:pathData="M0,6
+                C1,4 4,2 8,2
+                C10,2 12,3 13,5
+                C14,7 12,9 10,10
+                C8,11 4,10 2,9
+                C0,8 -1,7 0,6Z" />
+        <!-- Left wing (upper) -->
+        <path
+            android:fillColor="#C8A96E"
+            android:pathData="M3,5
+                C2,3 0,0 -2,-3
+                C-1,-2 2,0 5,2
+                C4,3 3,4 3,5Z" />
+        <!-- Right wing (upper) -->
+        <path
+            android:fillColor="#C8A96E"
+            android:pathData="M9,4
+                C10,2 14,-1 17,-3
+                C15,-1 12,1 10,3
+                C9,3.5 9,3.8 9,4Z" />
+        <!-- Tail -->
+        <path
+            android:fillColor="#A08050"
+            android:pathData="M0,7
+                C-1,8 -3,10 -4,12
+                C-3,11 -1,9 1,8Z" />
+        <!-- Eye -->
+        <path
+            android:fillColor="#1B3A2D"
+            android:pathData="M11,4.5 m-0.7,0 a0.7,0.7 0,1,1 1.4,0 a0.7,0.7 0,1,1 -1.4,0" />
+        <!-- Beak -->
+        <path
+            android:fillColor="#D4A040"
+            android:pathData="M13,5 L15.5,4.5 L13,6Z" />
+    </group>
+
+    <!-- Small accent: three dots below shield = trust chain -->
+    <path
+        android:fillColor="#C8A96E"
+        android:pathData="M48,78 m-1.2,0 a1.2,1.2 0,1,1 2.4,0 a1.2,1.2 0,1,1 -2.4,0" />
+    <path
+        android:fillColor="#C8A96E"
+        android:pathData="M54,80 m-1.2,0 a1.2,1.2 0,1,1 2.4,0 a1.2,1.2 0,1,1 -2.4,0" />
+    <path
+        android:fillColor="#C8A96E"
+        android:pathData="M60,78 m-1.2,0 a1.2,1.2 0,1,1 2.4,0 a1.2,1.2 0,1,1 -2.4,0" />
+</vector>

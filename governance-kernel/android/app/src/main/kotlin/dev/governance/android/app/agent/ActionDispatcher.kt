@@ -28,7 +28,11 @@ import kotlinx.coroutines.withContext
  *
  * All other kinds return [DispatchResult.Unsupported].
  */
-class ActionDispatcher(private val context: Context) {
+class ActionDispatcher(
+    private val context: Context,
+    /** LLM engine for the agent loop (ui_interact). Set after construction. */
+    var agentLoopEngine: LlmEngine? = null,
+) {
 
     suspend fun dispatch(decision: GateDecision, step: PlannedStep): DispatchResult =
         withContext(Dispatchers.Main) {
@@ -88,6 +92,7 @@ class ActionDispatcher(private val context: Context) {
             "toggle_flashlight" -> dispatchToggleFlashlight()
             "toggle_dnd" -> dispatchToggleDnd()
             "custom_intent" -> dispatchCustomIntent(step.target ?: "", step.message)
+            "ui_interact" -> dispatchUiInteract(step.target ?: "", step.message)
             else -> DispatchResult.Unsupported(
                 "Action '${step.kind}' isn't yet supported. The agent will skip it."
             )
@@ -442,6 +447,34 @@ class ActionDispatcher(private val context: Context) {
     }
 
     /**
+     * Multi-step UI interaction via the accessibility agent loop.
+     * The LLM observes the screen, reasons about what to do, and
+     * executes taps/scrolls/types in a loop until the task is done.
+     */
+    private suspend fun dispatchUiInteract(task: String, extra: String?): DispatchResult {
+        return try {
+            val engine = agentLoopEngine
+            if (engine == null || !engine.isLoaded) {
+                return DispatchResult.Failed(
+                    "Cloud LLM required for complex UI tasks. Configure your API key in settings."
+                )
+            }
+            val loop = AgentLoop(engine)
+            val screen = ScreenReader.read()
+            val currentApp = screen?.packageName ?: "unknown"
+            val result = loop.execute(task, currentApp)
+
+            if (result.success) {
+                DispatchResult.Success(result.summary + " (${result.steps.size} steps)")
+            } else {
+                DispatchResult.Failed(result.summary)
+            }
+        } catch (e: Exception) {
+            DispatchResult.Failed("UI interaction failed: ${e.message}")
+        }
+    }
+
+    /**
      * General-purpose intent launcher. The LLM specifies:
      * - target = intent action (e.g., "android.intent.action.SET_WALLPAPER")
      * - message = optional data URI
@@ -535,6 +568,14 @@ class ActionDispatcher(private val context: Context) {
             "photos" to "com.google.android.apps.photos",
             "camera" to "com.android.camera",
             "files" to "com.google.android.apps.nbu.files",
+            "play store" to "com.android.vending",
+            "store" to "com.android.vending",
+            "clock" to "com.google.android.deskclock",
+            "calculator" to "com.google.android.calculator",
+            "contacts" to "com.google.android.contacts",
+            "phone" to "com.google.android.dialer",
+            "notes" to "com.google.android.keep",
+            "drive" to "com.google.android.apps.docs",
         )
     }
 }

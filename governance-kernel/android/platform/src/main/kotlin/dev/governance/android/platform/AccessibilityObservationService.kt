@@ -105,6 +105,9 @@ class AccessibilityObservationService : AccessibilityService() {
         @Volatile
         private var instance: AccessibilityObservationService? = null
 
+        /** Returns the live service instance, or null if not connected. */
+        fun getInstance(): AccessibilityObservationService? = instance
+
         /**
          * Finds a clickable element by visible text and clicks it.
          * Used by the action dispatcher for auto-send in email, etc.
