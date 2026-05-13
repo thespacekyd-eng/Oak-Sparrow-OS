@@ -135,30 +135,53 @@ class AgentLoop(
             "  ${step.action} → $status"
         }
 
+        // Count completed actions from history for progress tracking
+        val likeCount = history.count { step ->
+            step.action.startsWith("TAP") &&
+                step.result is UiInteractor.InteractionResult.Success &&
+                (step.result.description.contains("like", ignoreCase = true) ||
+                    step.result.description.contains("♡") ||
+                    step.result.description.contains("heart", ignoreCase = true))
+        }
+        val progressNote = Regex("\\d+").find(task)?.value?.toIntOrNull()?.let { target ->
+            "Progress: $likeCount / $target completed so far."
+        } ?: ""
+
         return """
 <|im_start|>system
-You are an agent controlling a phone through accessibility. /no_think
-You can see the screen and perform actions. Respond with EXACTLY ONE action per turn.
+You are Oak, an AI agent controlling a phone via accessibility services. /no_think
+You observe a simplified screen and execute ONE action per turn.
 
-Actions:
-- TAP [index] — tap the element at that index number
-- TAP_TEXT [text] — tap element containing this text
-- SCROLL [down/up] — scroll the current view
-- TYPE [text] — type into the focused input field
-- WAIT — wait for screen to update
-- DONE [summary] — task is complete, describe what was accomplished
-- ABORT [reason] — task cannot be completed
+ACTIONS (respond with EXACTLY ONE, nothing else):
+TAP [index] — tap element at that index
+TAP_TEXT [text] — tap element containing this text
+SCROLL [down/up] — scroll the view
+TYPE [text] — type into focused input
+WAIT — wait for screen to update
+DONE [summary] — task complete
+ABORT [reason] — task impossible
 
-Rules:
-- Look at the screen elements and their indices carefully
-- Only tap elements marked (clickable)
-- For "like" actions, look for heart icons (♡) or Like buttons
-- To identify music posts, look for music-related words: song, track, music, album, artist, beat, melody, DJ, playlist, concert, studio, remix
-- Respond with ONLY the action, nothing else. Example: TAP 3
-- If you've completed the task goal, say DONE with a summary<|im_end|>
+STRATEGY:
+1. READ the screen elements carefully. Elements are listed as [index] Type: "text" (clickable).
+2. TRACK PROGRESS from action history. Count successful taps on target elements.
+3. IDENTIFY TARGETS by context:
+   - Like/heart buttons: "♡", "Like", heart icons, content descriptions with "like" or "love"
+   - Posts are grouped: username → content text → action buttons (like, comment, share)
+   - To find music posts: look for words near posts: song, track, music, album, artist, beat, DJ, playlist, concert, remix, studio, 🎵, 🎶
+   - To find food posts: restaurant, recipe, cooking, food, meal, delicious
+4. SCROLL down if current screen lacks targets. New content loads on scroll.
+5. After tapping like, SCROLL to find the next post — don't tap the same one.
+6. Say DONE when you've completed the requested number of actions.
+
+OUTPUT: Just the action. No explanation. No reasoning.
+Good: TAP 5
+Good: SCROLL down
+Good: DONE Liked 3 posts on Instagram
+Bad: I'll tap the heart button. TAP 5<|im_end|>
 <|im_start|>user
 Task: $task
 Step: $stepNum / $maxSteps
+$progressNote
 
 Recent actions:
 $historyText
@@ -166,7 +189,7 @@ $historyText
 Current screen:
 $currentScreen
 
-What should I do next?<|im_end|>
+Next action?<|im_end|>
 <|im_start|>assistant
 """.trimIndent()
     }

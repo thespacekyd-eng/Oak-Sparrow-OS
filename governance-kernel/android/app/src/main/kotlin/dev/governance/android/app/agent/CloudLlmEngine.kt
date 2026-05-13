@@ -137,8 +137,10 @@ class CloudLlmEngine(
                 prompt.substring(lastUserStart + "<|im_start|>user\n".length, lastUserEnd).trim()
             } else prompt
 
-            // Build a richer system prompt for the cloud model
-            val cloudSystem = """
+            // AgentLoop prompts have their own complete instructions (TAP/SCROLL/DONE).
+            // Only add planner-specific enrichment for Planner prompts.
+            val isAgentLoop = system.contains("TAP") && system.contains("SCROLL")
+            val cloudSystem = if (isAgentLoop) system else """
                 |$system
                 |
                 |You are the reasoning engine for Oak & Sparrow, a governance-gated phone assistant.

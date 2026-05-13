@@ -45,14 +45,16 @@ import kotlinx.coroutines.launch
  */
 class AssistantActivity : ComponentActivity() {
 
-    private var kernelInterface: AgentKernelInterface? = null
+    // MutableState so the composable recomposes when the service connects.
+    // Plain var would be captured as null at initial composition and never update.
+    private val kernelState = androidx.compose.runtime.mutableStateOf<AgentKernelInterface?>(null)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            kernelInterface = AgentKernelInterface.Stub.asInterface(service)
+            kernelState.value = AgentKernelInterface.Stub.asInterface(service)
         }
         override fun onServiceDisconnected(name: ComponentName) {
-            kernelInterface = null
+            kernelState.value = null
         }
     }
 
@@ -65,7 +67,7 @@ class AssistantActivity : ComponentActivity() {
         setContent {
             OakSparrowTheme {
                 AssistantHost(
-                    kernelInterface = kernelInterface,
+                    kernelInterface = kernelState.value,
                     context = this,
                     onClose = { finish() },
                 )
@@ -95,14 +97,28 @@ private fun AssistantHost(
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    // Same Planner + LLM engine as MainActivity. We construct fresh
-    // instances here because the activity may be invoked while
+    // Same Planner + LLM engine wiring as MainActivity. We construct
+    // fresh instances here because the activity may be invoked while
     // MainActivity is in the background or not even running.
     val planner = androidx.compose.runtime.remember {
-        Planner(LlamaCppLlmEngine(context))
+        val cloud = CloudLlmEngine(
+            apiKey = BuildConfig.CLOUD_API_KEY,
+            model = BuildConfig.CLOUD_MODEL,
+        )
+        val local = LlamaCppLlmEngine(context)
+        val hybrid = HybridLlmEngine(
+            cloud = cloud,
+            local = local,
+            cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank(),
+        )
+        Planner(hybrid)
     }
     val dispatcher = androidx.compose.runtime.remember {
-        ActionDispatcher(context)
+        val cloud = CloudLlmEngine(
+            apiKey = BuildConfig.CLOUD_API_KEY,
+            model = BuildConfig.CLOUD_MODEL,
+        )
+        ActionDispatcher(context, agentLoopEngine = cloud)
     }
     val speculationLog = androidx.compose.runtime.remember { SpeculationLog() }
 

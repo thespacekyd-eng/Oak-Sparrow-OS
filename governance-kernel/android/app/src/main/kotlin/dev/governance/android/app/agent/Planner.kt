@@ -423,6 +423,54 @@ class Planner(
                 ))
             }
 
+            // --- Complex UI interaction (agent loop) ---
+            // Detect tasks requiring multi-step interaction within an app:
+            // "like 3 posts on instagram", "comment on reels", "scroll through feed"
+            // Must run before the share/social/post catch-all to avoid misrouting.
+            val isComplexUiTask = listOf(
+                // "like 3 posts", "like a post", "heart this reel", "save 5 videos"
+                Regex("\\b(?:like|heart|save|bookmark|double.?tap)\\s+(?:(?:a|an|the|this|that|those|these|my|some|\\d+)\\s+)?(?:posts?|reels?|videos?|stor(?:y|ies)|photos?|tweets?|pics?)\\b", RegexOption.IGNORE_CASE),
+                // "comment on 2 posts", "reply to this reel"
+                Regex("\\b(?:comment|reply)\\s+(?:on|to)\\s+(?:(?:a|an|the|this|that|\\d+)\\s+)?(?:posts?|reels?|videos?|stor(?:y|ies)|tweets?)\\b", RegexOption.IGNORE_CASE),
+                // "scroll through my feed", "browse stories", "check my reels",
+                // "scroll through instagram for me", "browse instagram slowly"
+                Regex("\\b(?:scroll\\s+through|browse|check)\\s+(?:my\\s+)?(?:feed|stories|reels?|timeline)\\b", RegexOption.IGNORE_CASE),
+                Regex("\\b(?:scroll\\s+through|browse)\\s+(?:${APP_TRIGGERS.joinToString("|") { Regex.escape(it) }})\\b", RegexOption.IGNORE_CASE),
+                // "follow @user on instagram", "unfollow them on twitter"
+                Regex("\\b(?:follow|unfollow)\\s+\\S+\\s+(?:on|in)\\s+", RegexOption.IGNORE_CASE),
+                // "repost 3 tweets", "retweet this"
+                Regex("\\b(?:repost|retweet|reshare)\\s+", RegexOption.IGNORE_CASE),
+            ).any { it.containsMatchIn(lower) }
+
+            if (isComplexUiTask) {
+                val app = APP_TRIGGERS.firstOrNull { lower.contains(it) }
+                val taskDescription = if (app != null) {
+                    instruction
+                        .replace(Regex("\\s+(?:on|in)\\s+${Regex.escape(app)}\\s*$", RegexOption.IGNORE_CASE), "")
+                        .replace(Regex("^(?:on|in)\\s+${Regex.escape(app)}\\s+", RegexOption.IGNORE_CASE), "")
+                        .trim()
+                } else instruction
+                val steps = mutableListOf<PlannedStep>()
+                if (app != null) {
+                    steps.add(PlannedStep(
+                        kind = "open_app",
+                        target = app,
+                        rationale = "Open $app to perform the task",
+                        reversibility = Reversibility.FullyReversible,
+                    ))
+                }
+                steps.add(PlannedStep(
+                    kind = "ui_interact",
+                    target = taskDescription,
+                    rationale = "Multi-step UI interaction via agent loop",
+                    reversibility = Reversibility.PartiallyReversible,
+                ))
+                return PlanResult.Success(Plan(
+                    summary = taskDescription.take(50),
+                    steps = steps,
+                ))
+            }
+
             return when {
                 lower.contains("email") || lower.contains("mail") -> {
                     val target = extractTarget(instruction)
@@ -449,7 +497,8 @@ class Planner(
                         )),
                     ))
                 }
-                lower.contains("share") || lower.contains("social") || lower.contains("post") -> {
+                lower.contains("share") || lower.contains("social") ||
+                    Regex("\\bpost\\s+(?:to|on|a|an|the|something|this|it)\\b").containsMatchIn(lower) -> {
                     val target = extractTarget(instruction)
                     PlanResult.Success(Plan(
                         summary = "Share to social app",

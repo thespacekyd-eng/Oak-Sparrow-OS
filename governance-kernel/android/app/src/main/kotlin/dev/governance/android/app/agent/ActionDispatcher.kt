@@ -454,10 +454,14 @@ class ActionDispatcher(
     private suspend fun dispatchUiInteract(task: String, extra: String?): DispatchResult {
         return try {
             val engine = agentLoopEngine
-            if (engine == null || !engine.isLoaded) {
+            if (engine == null) {
                 return DispatchResult.Failed(
                     "Cloud LLM required for complex UI tasks. Configure your API key in settings."
                 )
+            }
+            if (!engine.isLoaded) {
+                val err = engine.loadModel()
+                if (err != null) return DispatchResult.Failed(err)
             }
             val loop = AgentLoop(engine)
             val screen = ScreenReader.read()
