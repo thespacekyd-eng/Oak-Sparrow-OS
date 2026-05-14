@@ -25,3 +25,6 @@ local.properties
 .cache/
 .git-old/
 **/.git-old/
+
+# Claude Code worktrees
+.claude/
