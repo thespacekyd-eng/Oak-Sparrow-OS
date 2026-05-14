@@ -19,6 +19,7 @@ import dev.governance.android.app.ui.screens.ChatScreen
 import dev.governance.android.app.ui.components.VerifiedBadge
 import dev.governance.core.Outcome
 import dev.governance.core.Reversibility
+import kotlinx.datetime.TimeZone
 import org.junit.Rule
 import org.junit.Test
 
@@ -143,6 +144,7 @@ class ScreenshotTests {
                     chainVerified = true,
                     chainProblemTime = null,
                     expandSystemEvents = true,
+                    timeZone = TimeZone.UTC,
                 )
             }
         }
@@ -159,6 +161,7 @@ class ScreenshotTests {
                     chainVerified = true,
                     chainProblemTime = null,
                     expandSystemEvents = true,
+                    timeZone = TimeZone.UTC,
                 )
             }
         }

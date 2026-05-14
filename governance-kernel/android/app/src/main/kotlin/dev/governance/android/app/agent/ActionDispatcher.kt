@@ -157,12 +157,6 @@ class ActionDispatcher(
                 ?: pm.getLaunchIntentForPackage(target.lowercase())
 
             if (launchIntent == null) {
-                // Fall back to a query intent that lets the system resolve.
-                val queryIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(queryIntent)
                 return DispatchResult.Failed("Could not find $target on this device.")
             }
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -426,7 +420,9 @@ class ActionDispatcher(
             // If already on, turning on again throws — try turning off
             try {
                 val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-                cm.setTorchMode(cm.cameraIdList.first(), false)
+                val id = cm.cameraIdList.firstOrNull()
+                    ?: return DispatchResult.Failed("No camera available.")
+                cm.setTorchMode(id, false)
                 DispatchResult.Success("Flashlight turned off.")
             } catch (_: Exception) {
                 DispatchResult.Failed("Could not toggle flashlight: ${e.message}")

@@ -11,7 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -166,7 +166,7 @@ private fun MainNavigation(
     data class NavItem(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
     val items = listOf(
         NavItem("home", R.string.nav_home, Icons.Filled.Home),
-        NavItem("decisions", R.string.nav_decisions, Icons.Filled.List),
+        NavItem("decisions", R.string.nav_decisions, Icons.AutoMirrored.Filled.List),
         NavItem("permissions", R.string.nav_permissions, Icons.Filled.Star),
         NavItem("technical", R.string.nav_technical, Icons.Filled.Settings),
     )

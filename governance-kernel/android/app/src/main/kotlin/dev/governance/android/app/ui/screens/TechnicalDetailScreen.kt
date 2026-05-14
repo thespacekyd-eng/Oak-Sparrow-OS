@@ -44,6 +44,7 @@ fun TechnicalDetailScreen(
     chainProblemTime: String?,
     expandSystemEvents: Boolean = false,
     buildMode: BuildMode = BuildMode.App,
+    timeZone: TimeZone = TimeZone.currentSystemDefault(),
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -139,7 +140,7 @@ fun TechnicalDetailScreen(
             AnimatedVisibility(visible = expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     systemEvents.takeLast(50).reversed().forEach { event ->
-                        SystemEventRow(event)
+                        SystemEventRow(event, timeZone)
                     }
                 }
             }
@@ -197,9 +198,9 @@ private fun GammaChart(gammaValues: List<Double>, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun SystemEventRow(event: SystemEventRecord) {
+private fun SystemEventRow(event: SystemEventRecord, timeZone: TimeZone = TimeZone.currentSystemDefault()) {
     val time = event.timestamp
-        .toLocalDateTime(TimeZone.currentSystemDefault())
+        .toLocalDateTime(timeZone)
         .let { "%02d:%02d".format(it.hour, it.minute) }
     val severityColor = when (event.severity) {
         SystemEventRecord.Severity.INFO -> MaterialTheme.colorScheme.onSurfaceVariant
