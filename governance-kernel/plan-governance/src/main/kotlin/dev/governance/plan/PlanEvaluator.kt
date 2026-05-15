@@ -1,13 +1,13 @@
-package dev.oasse.plan
+package dev.governance.plan
 
-import java.time.Clock
+import kotlinx.datetime.Clock
 
 class PlanEvaluator(
     private val rules: List<Rule> = Rules.standard,
-    private val clock: Clock = Clock.systemUTC(),
+    private val clock: Clock = Clock.System,
 ) {
     fun evaluate(plan: Plan): EvaluationResult {
-        val now = clock.instant()
+        val now = clock.now()
         for (rule in rules) {
             when (val outcome = rule.check(plan)) {
                 is RuleOutcome.Pass -> continue

@@ -1,19 +1,17 @@
-package dev.oasse.plan
+package dev.governance.plan
 
+import dev.governance.attestation.EphemeralKeyProvider
+import dev.governance.core.Reversibility
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import java.security.KeyPairGenerator
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
-class DecisionLogTest : StringSpec({
+class PlanDecisionLogTest : StringSpec({
 
-    fun newSigner() = Ed25519DecisionSigner(
-        KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-    )
+    fun newSigner() = DefaultPlanDecisionSigner(EphemeralKeyProvider())
 
     fun samplePlan(intent: String = "test plan") = Plan(
         id = PlanId.new(),
@@ -25,16 +23,18 @@ class DecisionLogTest : StringSpec({
                 kind = "noop",
                 target = "target",
                 reversibility = Reversibility.FullyReversible,
-                tier = Tier.App,
+                tier = PlanTier.App,
             ),
         ),
     )
 
-    val fixedClock = Clock.fixed(Instant.parse("2026-05-14T12:00:00Z"), ZoneOffset.UTC)
+    val fixedClock = object : Clock {
+        override fun now() = Instant.parse("2026-05-14T12:00:00Z")
+    }
 
     "record-and-verify roundtrip on a temp file" {
         val signer = newSigner()
-        val log = DecisionLog(path = tempfile().toPath(), signer = signer)
+        val log = PlanDecisionLog(path = tempfile().toPath(), signer = signer)
         val evaluator = PlanEvaluator(clock = fixedClock)
 
         val plan = samplePlan()
@@ -51,7 +51,7 @@ class DecisionLogTest : StringSpec({
 
     "verifyAll returns one valid result per recorded decision" {
         val signer = newSigner()
-        val log = DecisionLog(path = tempfile().toPath(), signer = signer)
+        val log = PlanDecisionLog(path = tempfile().toPath(), signer = signer)
         val evaluator = PlanEvaluator(clock = fixedClock)
 
         val plans = (1..5).map { samplePlan("plan $it") }

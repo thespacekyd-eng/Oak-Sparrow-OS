@@ -104,6 +104,7 @@ dependencies {
     implementation(project(":android-platform"))
     // Kernel modules for types — no :adversarial or :testing
     implementation(project(":core"))
+    implementation(project(":perception"))
     implementation(project(":attestation"))
     implementation(project(":gate"))
     implementation(project(":calibration"))

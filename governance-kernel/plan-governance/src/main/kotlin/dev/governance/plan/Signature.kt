@@ -1,4 +1,4 @@
-package dev.oasse.plan
+package dev.governance.plan
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -16,38 +16,35 @@ value class Signature(@Serializable(with = Base64ByteArraySerializer::class) val
 }
 
 /**
- * A governance decision with its Ed25519 attestation.
+ * A plan governance decision with its Ed25519 attestation.
  *
- * `equals` / `hashCode` are overridden so [Signature]'s `ByteArray` compares
- * by content rather than reference identity — without this, two decisions
- * with byte-identical signatures from separate array instances would test
- * unequal. Round-tripping through serialization always produces a fresh
- * `ByteArray`, so this matters every time a [SignedDecision] is read back
- * from disk.
+ * [publicKey] stores the hex-encoded X.509 SubjectPublicKeyInfo bytes of the
+ * signing key, matching the convention used in the kernel's [DecisionAttestation].
+ * This enables standalone verification without access to the original signer.
  */
 @Serializable
 data class SignedDecision(
     val result: EvaluationResult,
     val signature: Signature,
-    val publicKeyFingerprint: String,
+    val publicKey: String,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is SignedDecision) return false
         if (result != other.result) return false
         if (!signature.bytes.contentEquals(other.signature.bytes)) return false
-        if (publicKeyFingerprint != other.publicKeyFingerprint) return false
+        if (publicKey != other.publicKey) return false
         return true
     }
 
     override fun hashCode(): Int = Objects.hash(
         result,
         signature.bytes.contentHashCode(),
-        publicKeyFingerprint,
+        publicKey,
     )
 }
 
-private object Base64ByteArraySerializer : KSerializer<ByteArray> {
+internal object Base64ByteArraySerializer : KSerializer<ByteArray> {
     override val descriptor = PrimitiveSerialDescriptor("ByteArray.Base64", PrimitiveKind.STRING)
     override fun serialize(encoder: Encoder, value: ByteArray) {
         encoder.encodeString(Base64.getEncoder().encodeToString(value))
@@ -56,3 +53,8 @@ private object Base64ByteArraySerializer : KSerializer<ByteArray> {
         return Base64.getDecoder().decode(decoder.decodeString())
     }
 }
+
+internal fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+
+internal fun String.hexToBytes(): ByteArray =
+    chunked(2).map { it.toInt(16).toByte() }.toByteArray()

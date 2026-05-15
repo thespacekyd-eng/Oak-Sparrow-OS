@@ -1,5 +1,6 @@
-package dev.oasse.plan
+package dev.governance.plan
 
+import dev.governance.core.Reversibility
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Arb
@@ -9,15 +10,15 @@ import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.of
 import io.kotest.property.arbitrary.string
 import io.kotest.property.checkAll
-import java.time.Instant
+import kotlinx.datetime.Instant
 
 class PlanEvaluatorPropertyTest : StringSpec({
 
     val planArb: Arb<Plan> = arbitrary {
         val size = Arb.int(1..20).bind()
         val steps = List(size) { i ->
-            val tier = Arb.of(Tier.App, Tier.System).bind()
-            val reversibility = if (tier == Tier.System) {
+            val tier = Arb.of(PlanTier.App, PlanTier.System).bind()
+            val reversibility = if (tier == PlanTier.System) {
                 Arb.of(Reversibility.FullyReversible, Reversibility.PartiallyReversible).bind()
             } else {
                 Arb.enum<Reversibility>().bind()
@@ -38,7 +39,7 @@ class PlanEvaluatorPropertyTest : StringSpec({
         )
     }
 
-    "any plan with no RootSystem, no Irreversible-System, ≤20 steps, no blocked kinds approves under standard rules" {
+    "any plan with no RootSystem, no Irreversible-System, and ≤20 steps approves under standard rules" {
         val evaluator = PlanEvaluator()
         checkAll(planArb) { plan ->
             val result = evaluator.evaluate(plan)

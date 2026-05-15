@@ -1,7 +1,15 @@
 package dev.governance.android.platform
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import dev.governance.perception.NodeRole
+import dev.governance.perception.ScreenNode
+import dev.governance.perception.ScreenRect
+import dev.governance.perception.ScreenTree
+import dev.governance.perception.TreeCapture
+import kotlinx.datetime.Clock
 
 /**
  * Observes outcomes of agent actions via the accessibility framework.
@@ -33,7 +41,7 @@ import android.view.accessibility.AccessibilityEvent
  * // the observation service should integrate with it for structured outcome
  * // reporting from supported apps, replacing heuristic accessibility scraping.
  */
-class AccessibilityObservationService : AccessibilityService() {
+class AccessibilityObservationService : AccessibilityService(), TreeCapture {
 
     /**
      * Callback for delivering resolved outcomes to the kernel service.
@@ -45,11 +53,9 @@ class AccessibilityObservationService : AccessibilityService() {
         if (event == null) return
 
         // PHASE2B-FOLLOWUP: Implement real outcome resolution heuristics.
-        // For now, log event types for debugging.
         when (event.eventType) {
             AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED -> {
                 val text = event.text?.joinToString(" ") ?: ""
-                // Stub: detect error-like notifications
                 if (text.contains("error", ignoreCase = true) ||
                     text.contains("failed", ignoreCase = true)
                 ) {
@@ -58,10 +64,90 @@ class AccessibilityObservationService : AccessibilityService() {
             }
 
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // Stub: track window transitions for outcome correlation
                 val className = event.className?.toString() ?: ""
                 outcomeCallback?.onWindowChanged(className)
             }
+
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                outcomeCallback?.onScrollCompleted()
+            }
+
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                val text = event.text?.joinToString(" ") ?: event.contentDescription?.toString() ?: ""
+                outcomeCallback?.onClickConfirmed(text)
+            }
+        }
+    }
+
+    // -- Phase A: Tree capture for structured perception -----------------
+
+    /**
+     * Captures the current screen as a serializable [ScreenTree].
+     * Returns null if the service is not connected or the window is unavailable.
+     *
+     * The tree contains only visible nodes that have text, content description,
+     * or interactive properties (clickable, scrollable, editable). Depth is
+     * limited to 12 levels to prevent stack overflow on deeply nested layouts.
+     */
+    override fun captureTree(): ScreenTree? {
+        val root = rootInActiveWindow ?: return null
+        val nodes = mutableListOf<ScreenNode>()
+        var index = 0
+        var totalCount = 0
+        try {
+            collectScreenNodes(root, nodes, indexer = { index++ }, counter = { totalCount++ }, depth = 0)
+        } catch (_: Exception) { }
+        val pkg = root.packageName?.toString() ?: "unknown"
+        return ScreenTree(
+            packageName = pkg,
+            timestamp = Clock.System.now(),
+            nodes = nodes,
+            totalNodeCount = totalCount,
+        )
+    }
+
+    private fun collectScreenNodes(
+        node: AccessibilityNodeInfo,
+        out: MutableList<ScreenNode>,
+        indexer: () -> Int,
+        counter: () -> Unit,
+        depth: Int,
+    ) {
+        if (depth > 12) return
+        counter()
+
+        val hasText = !node.text.isNullOrBlank()
+        val hasDesc = !node.contentDescription.isNullOrBlank()
+        val isInteractive = node.isClickable || node.isScrollable || node.isEditable
+
+        if (hasText || hasDesc || isInteractive) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val role = when {
+                node.isScrollable -> NodeRole.ScrollView
+                else -> NodeRole.fromClassName(node.className?.toString())
+            }
+            out.add(
+                ScreenNode(
+                    index = indexer(),
+                    className = node.className?.toString() ?: "",
+                    role = role,
+                    text = node.text?.toString(),
+                    contentDescription = node.contentDescription?.toString(),
+                    isClickable = node.isClickable,
+                    isScrollable = node.isScrollable,
+                    isEditable = node.isEditable,
+                    isCheckable = node.isCheckable,
+                    isChecked = node.isChecked,
+                    isEnabled = node.isEnabled,
+                    bounds = ScreenRect(rect.left, rect.top, rect.right, rect.bottom),
+                    depth = depth,
+                )
+            )
+        }
+
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { collectScreenNodes(it, out, indexer, counter, depth + 1) }
         }
     }
 
@@ -88,6 +174,8 @@ class AccessibilityObservationService : AccessibilityService() {
     interface OutcomeCallback {
         fun onErrorDetected(text: String)
         fun onWindowChanged(className: String)
+        fun onScrollCompleted() {}
+        fun onClickConfirmed(text: String) {}
     }
 
     companion object {
@@ -107,6 +195,12 @@ class AccessibilityObservationService : AccessibilityService() {
 
         /** Returns the live service instance, or null if not connected. */
         fun getInstance(): AccessibilityObservationService? = instance
+
+        /**
+         * Captures the current screen as a serializable [ScreenTree].
+         * Convenience static accessor — delegates to the live service instance.
+         */
+        fun captureTree(): ScreenTree? = instance?.captureTree()
 
         /**
          * Finds a clickable element by visible text and clicks it.

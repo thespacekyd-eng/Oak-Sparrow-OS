@@ -1,4 +1,6 @@
-package dev.oasse.plan
+package dev.governance.plan
+
+import dev.governance.core.Reversibility
 
 fun interface Rule {
     fun check(plan: Plan): RuleOutcome
@@ -12,13 +14,13 @@ sealed interface RuleOutcome {
 object Rules {
 
     val noRootSystemActions = Rule { plan ->
-        plan.steps.firstOrNull { it.tier == Tier.RootSystem }
+        plan.steps.firstOrNull { it.tier == PlanTier.RootSystem }
             ?.let { RuleOutcome.Fail("RootSystem tier requires human approval", it.index) }
             ?: RuleOutcome.Pass
     }
 
     val noIrreversibleSystemActions = Rule { plan ->
-        plan.steps.firstOrNull { it.tier == Tier.System && it.reversibility == Reversibility.Irreversible }
+        plan.steps.firstOrNull { it.tier == PlanTier.System && it.reversibility == Reversibility.Irreversible }
             ?.let { RuleOutcome.Fail("Irreversible System actions are not permitted", it.index) }
             ?: RuleOutcome.Pass
     }
@@ -42,14 +44,6 @@ object Rules {
      *
      * Order is part of the contract: evaluation short-circuits on the first
      * [RuleOutcome.Fail], so rules earlier in this list dominate later ones.
-     * The current ordering — root-system tier, then irreversible-system, then
-     * size cap — puts permission gates ahead of structural limits, so a
-     * plan with both a RootSystem step and 50 steps reports the permission
-     * failure rather than the size one.
-     *
-     * To extend, build a new list rather than mutating this one:
-     *
-     *     PlanEvaluator(rules = Rules.standard + Rules.kindBlocklist(setOf("delete_data")))
      */
     val standard: List<Rule> = listOf(
         noRootSystemActions,

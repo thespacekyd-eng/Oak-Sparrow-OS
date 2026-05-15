@@ -1,17 +1,19 @@
-package dev.oasse.plan
+package dev.governance.plan
 
+import dev.governance.core.Reversibility
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 class PlanEvaluatorTest : StringSpec({
 
     val fixedNow = Instant.parse("2026-05-14T12:00:00Z")
-    val fixedClock = Clock.fixed(fixedNow, ZoneOffset.UTC)
+    val fixedClock = object : Clock {
+        override fun now() = fixedNow
+    }
 
     "approves a clean App-tier plan" {
         val plan = planOf(appStep(0), appStep(1))
@@ -61,9 +63,6 @@ class PlanEvaluatorTest : StringSpec({
     }
 
     "applies rules in order and reports the first failure only" {
-        // Plan has BOTH a RootSystem step (rule 1 fails) AND > 20 steps (rule 3 fails).
-        // Standard order is noRootSystemActions → noIrreversibleSystemActions → boundedPlanSize,
-        // so the expectation is the rule-1 RootSystem failure, not the size-cap failure.
         val steps = (0..20).map { appStep(it) } + rootStep(21)
         val plan = planOf(*steps.toTypedArray())
         val result = PlanEvaluator(clock = fixedClock).evaluate(plan)
@@ -86,7 +85,7 @@ private fun appStep(i: Int, kind: String = "noop"): PlanStep = PlanStep(
     kind = kind,
     target = "target-$i",
     reversibility = Reversibility.FullyReversible,
-    tier = Tier.App,
+    tier = PlanTier.App,
 )
 
 private fun rootStep(i: Int): PlanStep = PlanStep(
@@ -94,7 +93,7 @@ private fun rootStep(i: Int): PlanStep = PlanStep(
     kind = "root_op",
     target = "target-$i",
     reversibility = Reversibility.FullyReversible,
-    tier = Tier.RootSystem,
+    tier = PlanTier.RootSystem,
 )
 
 private fun irreversibleSystemStep(i: Int): PlanStep = PlanStep(
@@ -102,5 +101,5 @@ private fun irreversibleSystemStep(i: Int): PlanStep = PlanStep(
     kind = "sys_op",
     target = "target-$i",
     reversibility = Reversibility.Irreversible,
-    tier = Tier.System,
+    tier = PlanTier.System,
 )

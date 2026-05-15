@@ -1,4 +1,4 @@
-package dev.oasse.plan
+package dev.governance.plan
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -8,22 +8,15 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 
 /**
- * Append-only log of [SignedDecision]s, one JSON object per line.
- *
- * **Wire-format invariant:** the [json] config here must match the canonical
- * `Json` used internally by the [DecisionSigner] (defaults are aligned for
- * this reason — `classDiscriminator = "kind"`, `encodeDefaults = true`).
- * If a future maintainer changes one config without the other, the on-disk
- * representation drifts from the signed canonical form and verification
- * semantics break. Change both or neither.
+ * Append-only JSONL log of [SignedDecision]s, following the same pattern
+ * as the kernel's audit log but for plan-level governance decisions.
  */
-class DecisionLog(
+class PlanDecisionLog(
     private val path: Path,
-    private val signer: DecisionSigner,
+    private val signer: PlanDecisionSigner,
     private val json: Json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
-        classDiscriminator = "kind"
     },
 ) {
     suspend fun record(result: EvaluationResult): SignedDecision = withContext(Dispatchers.IO) {
