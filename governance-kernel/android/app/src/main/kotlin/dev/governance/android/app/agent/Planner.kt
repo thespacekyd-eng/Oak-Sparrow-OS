@@ -81,8 +81,11 @@ class Planner(
         // 2. Compound/complex instructions → LLM reasoning (skip keywords).
         //    "open instagram and like the first post" needs the LLM to
         //    plan open_app + ui_interact, not just open_app.
-        if (engine.isLoaded && isCompound(userInstruction)) {
+        //    Use isModelAvailable() not isLoaded — cloud engine is always
+        //    available but isLoaded is false until loadModel() is called.
+        if (engine.isModelAvailable() && isCompound(userInstruction)) {
             try { android.util.Log.i("OakPlanner", "Compound instruction, using LLM reasoning") } catch (_: Throwable) {}
+            if (!engine.isLoaded) engine.loadModel()
             return@withContext planWithEngine(userInstruction)
         }
 
