@@ -115,6 +115,7 @@ dependencies {
     implementation(project(":audit"))
 
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.security.crypto)
     implementation(libs.kotlinx.datetime)
     implementation(libs.kotlinx.coroutines.android)
 

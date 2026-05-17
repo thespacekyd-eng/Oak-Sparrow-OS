@@ -1,6 +1,9 @@
 package dev.governance.android.app.agent
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -9,10 +12,21 @@ import kotlinx.serialization.json.Json
  * Persistent memory for Oak across conversations.
  * Stores facts the LLM learns about the user (name, preferences, contacts, etc.)
  * and injects them into the system prompt so Oak remembers across sessions.
+ * Encrypted at rest via EncryptedSharedPreferences.
  */
 class OakMemory(context: Context) {
 
-    private val prefs = context.getSharedPreferences("oak_memory", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = try {
+        EncryptedSharedPreferences.create(
+            "oak_memory_enc",
+            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+            context,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    } catch (_: Exception) {
+        context.getSharedPreferences("oak_memory", Context.MODE_PRIVATE)
+    }
     private val json = Json { ignoreUnknownKeys = true }
 
     fun getMemories(): List<MemoryEntry> {

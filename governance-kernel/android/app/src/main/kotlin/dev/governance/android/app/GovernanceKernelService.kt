@@ -105,11 +105,11 @@ class GovernanceKernelService : Service() {
         persistence = StatePersistence(this)
         auditWriter = AndroidJsonlAuditWriter(this)
 
-        // Debug builds skip warmup entirely so negative latency (INSTANT
-        // dispatch) works from the first action. Release builds keep the
-        // full 100-decision defensive warmup.
+        // Debug builds use a short warmup (10 decisions) so the kernel
+        // builds minimal trust before allowing instant dispatch. Release
+        // builds keep the full 100-decision defensive warmup.
         val calibrator = DefensivePriorCalibrator(
-            warmupThreshold = if (BuildConfig.DEBUG) 0 else 100,
+            warmupThreshold = if (BuildConfig.DEBUG) 10 else 100,
         )
         kernel = DefaultGovernanceKernel(
             metrics = GateMetrics(
