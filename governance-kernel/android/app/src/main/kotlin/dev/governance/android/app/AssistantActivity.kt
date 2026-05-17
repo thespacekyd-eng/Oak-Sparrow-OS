@@ -100,18 +100,24 @@ private fun AssistantHost(
     // Same Planner + LLM engine wiring as MainActivity. We construct
     // fresh instances here because the activity may be invoked while
     // MainActivity is in the background or not even running.
+    val llmMode = androidx.compose.runtime.remember { LlmPreference.getLlmMode(context) }
+
     val planner = androidx.compose.runtime.remember {
         val cloud = CloudLlmEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
             model = BuildConfig.CLOUD_MODEL,
         )
         val local = LlamaCppLlmEngine(context)
+        val cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank() && llmMode != LlmMode.ON_DEVICE
         val hybrid = HybridLlmEngine(
             cloud = cloud,
             local = local,
-            cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank(),
+            cloudEnabled = cloudEnabled,
         )
-        Planner(hybrid)
+        val conversation = if (cloudEnabled) ConversationEngine(
+            apiKey = BuildConfig.CLOUD_API_KEY,
+        ) else null
+        Planner(hybrid, conversationEngine = conversation)
     }
     val dispatcher = androidx.compose.runtime.remember {
         val cloud = CloudLlmEngine(
@@ -180,6 +186,14 @@ private fun AssistantHost(
         if (voiceState is VoiceState.Heard && transcript.value.isNotBlank()) {
             val instruction = transcript.value
             transcript.value = ""
+
+            // Exit phrases close the overlay
+            val exitPhrases = listOf("bye", "goodbye", "close", "done", "exit", "stop", "never mind")
+            if (exitPhrases.any { instruction.lowercase().trim() == it }) {
+                onClose()
+                return@LaunchedEffect
+            }
+
             val ki = kernelInterface
             if (ki == null) {
                 val msg = "Not connected to the governance kernel."
@@ -204,12 +218,16 @@ private fun AssistantHost(
         }
     }
 
-    // Auto-close after TTS finishes. Gives the user a moment to see
-    // the spoken text on screen before the overlay disappears.
+    // After device TTS finishes, start listening again for the next
+    // turn. Multi-turn conversation: the user can keep talking.
+    // Say "bye" or "done" to close.
     androidx.compose.runtime.LaunchedEffect(voiceState) {
         if (voiceState is VoiceState.Idle && responseText.value.isNotEmpty()) {
-            kotlinx.coroutines.delay(800)
-            onClose()
+            kotlinx.coroutines.delay(400)
+            // Re-listen for next turn instead of closing
+            if (voiceController.hasMicrophonePermission()) {
+                voiceController.startListening()
+            }
         }
     }
 
