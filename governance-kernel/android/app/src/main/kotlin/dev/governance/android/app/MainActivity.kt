@@ -107,12 +107,18 @@ private fun MainNavigation(
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var chatInput by remember { mutableStateOf("") }
     var isProcessing by remember { mutableStateOf(false) }
+
+    // User preferences
+    var llmMode by remember { mutableStateOf(LlmPreference.getLlmMode(context)) }
+    val hasCloudKey = BuildConfig.CLOUD_API_KEY.isNotBlank()
+
     // Hybrid wiring: Cloud LLM (Claude) for reasoning quality + on-device
     // llama.cpp for offline fallback. Cloud calls are PII-stripped by
     // PiiSanitizer before leaving the device. The keyword router runs
     // first (negative latency) — cloud is only hit for complex requests.
     // If no API key is configured, falls through to on-device only.
-    val planner = remember {
+    val cloudEnabled = hasCloudKey && llmMode != LlmMode.ON_DEVICE
+    val planner = remember(llmMode) {
         val cloud = CloudLlmEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
             model = BuildConfig.CLOUD_MODEL,
@@ -121,9 +127,12 @@ private fun MainNavigation(
         val hybrid = HybridLlmEngine(
             cloud = cloud,
             local = local,
-            cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank(),
+            cloudEnabled = cloudEnabled,
         )
-        Planner(hybrid)
+        val conversation = if (cloudEnabled) ConversationEngine(
+            apiKey = BuildConfig.CLOUD_API_KEY,
+        ) else null
+        Planner(hybrid, conversationEngine = conversation)
     }
     val dispatcher = remember {
         val cloud = CloudLlmEngine(
@@ -134,6 +143,9 @@ private fun MainNavigation(
     }
     val speculationLog = remember { SpeculationLog() }
     val scope = rememberCoroutineScope()
+
+    // Voice chat state
+    val voiceChatHistory = remember { mutableStateListOf<VoiceTurn>() }
 
     // Voice loop. Mic + TTS, both on-device. Constructed lazily — no
     // I/O at construction. The onTranscript callback drops the
@@ -176,7 +188,7 @@ private fun MainNavigation(
             TopAppBar(title = { Text(stringResource(R.string.app_name)) })
         },
         bottomBar = {
-            if (currentRoute != "chat") {
+            if (currentRoute != "chat" && currentRoute != "voice-chat" && currentRoute != "settings") {
                 NavigationBar {
                     items.forEach { item ->
                         NavigationBarItem(
@@ -206,6 +218,8 @@ private fun MainNavigation(
                     onDecisionTap = { navController.navigate("decisions") },
                     onSeeDetails = { navController.navigate("technical") },
                     onChatTap = { navController.navigate("chat") },
+                    onVoiceChatTap = { navController.navigate("voice-chat") },
+                    onSettingsTap = { navController.navigate("settings") },
                     buildMode = buildMode,
                 )
             }
@@ -378,6 +392,86 @@ private fun MainNavigation(
                         }
                     },
                     onSend = { sendInstruction(chatInput) },
+                )
+            }
+            composable("voice-chat") {
+                // Load model eagerly for voice chat
+                LaunchedEffect(Unit) {
+                    if (planner.isModelAvailable()) planner.loadModel()
+                    planner.resetConversation()
+                }
+
+                VoiceChatScreen(
+                    voiceState = voiceState,
+                    conversationHistory = voiceChatHistory,
+                    onMicTap = {
+                        if (voiceState is VoiceState.Listening) {
+                            voiceController.cancelListening()
+                            return@VoiceChatScreen
+                        }
+                        if (voiceState is VoiceState.Speaking) {
+                            voiceController.stopSpeaking()
+                        }
+                        if (voiceController.hasMicrophonePermission()) {
+                            voiceController.startListening()
+                        } else {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    onClose = { navController.popBackStack() },
+                )
+
+                // Voice chat instruction handler
+                LaunchedEffect(voiceState) {
+                    if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
+                        val instruction = chatInput.trim()
+                        chatInput = ""
+                        voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
+
+                        val ki = kernelInterface
+                        if (ki == null) {
+                            val msg = "Not connected to governance service."
+                            voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
+                            voiceController.speak(msg)
+                            return@LaunchedEffect
+                        }
+
+                        isProcessing = true
+                        if (planner.isModelAvailable()) planner.loadModel()
+                        val orchestrator = SpeculativeOrchestrator(
+                            context, planner, ki, dispatcher, speculationLog,
+                        )
+                        val (planResult, _, _) = orchestrator.execute(instruction)
+                        val text: String = when (planResult) {
+                            is PlanResult.Success -> planResult.plan.summary
+                            is PlanResult.Conversational -> planResult.message
+                            is PlanResult.Error -> planResult.message
+                        }
+                        voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, text))
+                        isProcessing = false
+
+                        voiceController.speak(text)
+                    }
+                }
+
+                // After device TTS finishes, auto-listen for next turn
+                LaunchedEffect(voiceState) {
+                    if (voiceState is VoiceState.Idle && voiceChatHistory.isNotEmpty()) {
+                        kotlinx.coroutines.delay(300)
+                        if (voiceController.hasMicrophonePermission()) {
+                            voiceController.startListening()
+                        }
+                    }
+                }
+            }
+            composable("settings") {
+                SettingsScreen(
+                    llmMode = llmMode,
+                    onLlmModeChange = { mode ->
+                        llmMode = mode
+                        LlmPreference.setLlmMode(context, mode)
+                    },
+                    hasCloudKey = hasCloudKey,
                 )
             }
         }

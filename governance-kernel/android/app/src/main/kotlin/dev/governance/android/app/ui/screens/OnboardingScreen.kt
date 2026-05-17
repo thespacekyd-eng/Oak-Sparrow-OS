@@ -1,6 +1,7 @@
 package dev.governance.android.app.ui.screens
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,6 +11,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
@@ -35,9 +37,15 @@ fun OnboardingScreen(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pagerState = rememberPagerState(pageCount = { 3 })
+    val pageCount = 4
+    val pagerState = rememberPagerState(pageCount = { pageCount })
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val roleManager = context.getSystemService(RoleManager::class.java)
+
+    val assistantRoleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { scope.launch { pagerState.animateScrollToPage(3) } }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -83,6 +91,23 @@ fun OnboardingScreen(
                     },
                 )
                 2 -> OnboardingPage(
+                    icon = Icons.Filled.PhoneAndroid,
+                    title = stringResource(R.string.onboarding_title_4),
+                    body = stringResource(R.string.onboarding_body_4),
+                    buttonText = stringResource(R.string.btn_set_assistant),
+                    onAction = {
+                        if (roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
+                            !roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+                        ) {
+                            assistantRoleLauncher.launch(
+                                roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT)
+                            )
+                        } else {
+                            scope.launch { pagerState.animateScrollToPage(3) }
+                        }
+                    },
+                )
+                3 -> OnboardingPage(
                     icon = Icons.Filled.Notifications,
                     title = stringResource(R.string.onboarding_title_3),
                     body = stringResource(R.string.onboarding_body_3),
@@ -101,7 +126,7 @@ fun OnboardingScreen(
                 .padding(top = 16.dp),
             horizontalArrangement = Arrangement.Center,
         ) {
-            repeat(3) { i ->
+            repeat(pageCount) { i ->
                 val color = if (i == pagerState.currentPage)
                     MaterialTheme.colorScheme.primary
                 else

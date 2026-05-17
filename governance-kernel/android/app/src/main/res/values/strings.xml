@@ -103,8 +103,11 @@
     <string name="onboarding_body_2">To verify that agent actions actually completed as reported, we need accessibility service access. This lets us confirm outcomes without trusting the agent\'s self-reports.</string>
     <string name="onboarding_title_3">Notifications</string>
     <string name="onboarding_body_3">We need notification permission to show you when agent actions need your approval and to display the governance status.</string>
+    <string name="onboarding_title_4">Digital assistant</string>
+    <string name="onboarding_body_4">Set Oak &amp; Sparrow as your default digital assistant so you can launch it by long-pressing the home button.</string>
     <string name="btn_next">Next</string>
     <string name="btn_open_settings">Open Settings</string>
+    <string name="btn_set_assistant">Set as Default</string>
     <string name="btn_grant">Grant</string>
     <string name="btn_skip">Skip</string>
     <string name="btn_get_started">Get Started</string>
