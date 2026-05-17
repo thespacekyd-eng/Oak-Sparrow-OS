@@ -7,15 +7,14 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -24,15 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
+import dev.governance.android.app.ui.theme.OakPalette
 import kotlinx.coroutines.launch
 
-/**
- * Three-page onboarding inside a HorizontalPager with dot indicators.
- * Skip button on each page allows skipping. Onboarding completion
- * is recorded externally by the hosting activity.
- */
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
@@ -60,14 +57,19 @@ fun OnboardingScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(OakPalette.Background)
             .padding(24.dp),
     ) {
+        // Skip button
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
         ) {
             TextButton(onClick = onSkip) {
-                Text(stringResource(R.string.btn_skip))
+                Text(
+                    stringResource(R.string.btn_skip),
+                    color = OakPalette.TextTertiary,
+                )
             }
         }
 
@@ -77,14 +79,14 @@ fun OnboardingScreen(
         ) { page ->
             when (page) {
                 0 -> OnboardingPage(
-                    icon = Icons.Filled.Star,
+                    icon = Icons.Filled.Park,
                     title = stringResource(R.string.onboarding_title_1),
                     body = stringResource(R.string.onboarding_body_1),
                     buttonText = stringResource(R.string.btn_next),
                     onAction = { scope.launch { pagerState.animateScrollToPage(1) } },
                 )
                 1 -> OnboardingPage(
-                    icon = Icons.Filled.Person,
+                    icon = Icons.Filled.Accessibility,
                     title = stringResource(R.string.onboarding_title_2),
                     body = stringResource(R.string.onboarding_body_2),
                     buttonText = stringResource(R.string.btn_open_settings),
@@ -151,16 +153,13 @@ fun OnboardingScreen(
             horizontalArrangement = Arrangement.Center,
         ) {
             repeat(pageCount) { i ->
-                val color = if (i == pagerState.currentPage)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.outlineVariant
+                val isActive = i == pagerState.currentPage
                 Surface(
                     modifier = Modifier
                         .padding(horizontal = 4.dp)
-                        .size(8.dp),
-                    shape = MaterialTheme.shapes.extraSmall,
-                    color = color,
+                        .size(if (isActive) 10.dp else 8.dp),
+                    shape = CircleShape,
+                    color = if (isActive) OakPalette.Primary else OakPalette.OutlineVariant,
                     content = {},
                 )
             }
@@ -183,19 +182,61 @@ internal fun OnboardingPage(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(72.dp),
-            tint = MaterialTheme.colorScheme.primary,
+        // Icon in a circle
+        Surface(
+            modifier = Modifier.size(80.dp),
+            shape = CircleShape,
+            color = OakPalette.PrimaryContainer,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = OakPalette.Primary,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = OakPalette.TextPrimary,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(24.dp))
-        Text(title, style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(12.dp))
-        Text(body, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(32.dp))
-        Button(onClick = onAction) {
-            Text(buttonText)
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = OakPalette.TextSecondary,
+            textAlign = TextAlign.Start,
+            modifier = Modifier.fillMaxWidth(),
+            lineHeight = MaterialTheme.typography.bodyLarge.lineHeight,
+        )
+
+        Spacer(Modifier.height(36.dp))
+
+        Button(
+            onClick = onAction,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = OakPalette.Primary,
+                contentColor = OakPalette.OnPrimary,
+            ),
+        ) {
+            Text(
+                buttonText,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
     }
 }
