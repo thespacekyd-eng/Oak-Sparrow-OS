@@ -27,6 +27,7 @@ import java.io.File
  */
 class Planner(
     private val engine: LlmEngine,
+    private val conversationEngine: ConversationEngine? = null,
 ) {
 
     /**
@@ -57,16 +58,49 @@ class Planner(
      * can instant-dispatch before the governance round-trip. The LLM
      * is reserved for truly ambiguous or complex requests that the
      * keyword patterns don't cover.
+     *
+     * When a [ConversationEngine] is attached and the input looks
+     * conversational (question, greeting, follow-up), routes directly
+     * to multi-turn conversation for natural responses.
      */
     suspend fun plan(userInstruction: String): PlanResult = withContext(Dispatchers.IO) {
+        // 1. Conversational → ConversationEngine (multi-turn chat)
+        if (conversationEngine != null && conversationEngine.isAvailable &&
+            isConversational(userInstruction)) {
+            return@withContext try {
+                val response = conversationEngine.converse(userInstruction)
+                PlanResult.Conversational(response)
+            } catch (e: Exception) {
+                try { android.util.Log.w("OakPlanner", "Conversation failed: ${e.message}") } catch (_: Throwable) {}
+                val keywordResult = planWithKeywords(userInstruction)
+                if (keywordResult is PlanResult.Success) keywordResult
+                else planWithEngineOrFallback(userInstruction, keywordResult)
+            }
+        }
+
+        // 2. Compound/complex instructions → LLM reasoning (skip keywords).
+        //    "open instagram and like the first post" needs the LLM to
+        //    plan open_app + ui_interact, not just open_app.
+        if (engine.isLoaded && isCompound(userInstruction)) {
+            try { android.util.Log.i("OakPlanner", "Compound instruction, using LLM reasoning") } catch (_: Throwable) {}
+            return@withContext planWithEngine(userInstruction)
+        }
+
+        // 3. Simple single-action commands → keyword router (instant)
         val keywordResult = planWithKeywords(userInstruction)
         if (keywordResult is PlanResult.Success) return@withContext keywordResult
 
-        if (engine.isLoaded) {
-            planWithEngine(userInstruction)
-        } else {
-            keywordResult
-        }
+        // 4. Keywords failed → LLM fallback
+        planWithEngineOrFallback(userInstruction, keywordResult)
+    }
+
+    private suspend fun planWithEngineOrFallback(instruction: String, keywordResult: PlanResult): PlanResult {
+        return if (engine.isLoaded) planWithEngine(instruction) else keywordResult
+    }
+
+    /** Resets the conversation history. Call when starting a new voice session. */
+    fun resetConversation() {
+        conversationEngine?.reset()
     }
 
     /** Releases engine resources. Call when the planner is no longer needed. */
@@ -84,6 +118,89 @@ class Planner(
     }
 
     companion object {
+        /**
+         * Heuristic: is this input conversational (question, greeting,
+         * follow-up) rather than a phone command?
+         *
+         * Commands have action verbs: "open", "text", "call", "set alarm".
+         * Conversation has: questions, greetings, opinions, "what/how/why",
+         * follow-ups like "tell me more", "what about...", "and also...".
+         */
+        internal fun isConversational(instruction: String): Boolean {
+            val lower = instruction.lowercase().trim()
+
+            // Explicit command indicators — NOT conversational
+            val commandPrefixes = listOf(
+                "open ", "launch ", "text ", "call ", "dial ", "email ",
+                "set alarm", "set timer", "search ", "navigate ", "play ",
+                "turn on", "turn off", "volume ", "flashlight", "camera",
+                "share ", "download ", "install ",
+            )
+            if (commandPrefixes.any { lower.startsWith(it) }) return false
+
+            // Conversational indicators
+            val conversationalPatterns = listOf(
+                // Questions
+                Regex("^(what|who|where|when|why|how|which|can you|could you|do you|is |are |was |were |will |would |should |tell me)\\b"),
+                // Greetings / social
+                Regex("^(hi|hey|hello|good morning|good night|thanks|thank you|bye|goodbye|sup|yo|what's up)\\b"),
+                // Follow-ups
+                Regex("^(and |also |but |so |wait |actually |oh |hmm|okay|ok |yeah|yes|no |nah)\\b"),
+                // Opinions / discussion
+                Regex("^(i think|i feel|i want to know|i'm curious|explain|describe|compare)\\b"),
+                // Short responses (likely follow-up in conversation)
+                Regex("^.{1,15}$"), // very short inputs are usually conversational
+            )
+            if (conversationalPatterns.any { it.containsMatchIn(lower) }) return true
+
+            // If it doesn't match keywords AND has a question mark, it's conversational
+            if (lower.contains("?")) return true
+
+            // Default: not clearly conversational, let LLM decide
+            return false
+        }
+
+        /**
+         * Detects compound/multi-step instructions that the keyword
+         * router would mangle. These need LLM reasoning to plan correctly.
+         *
+         * Examples:
+         * - "open instagram and like the first post you see"
+         * - "text mom then set an alarm for 7am"
+         * - "go to twitter, scroll down, and retweet the first thing"
+         * - "open spotify and play my liked songs"
+         */
+        internal fun isCompound(instruction: String): Boolean {
+            val lower = instruction.lowercase().trim()
+
+            // Conjunctions joining clauses with action verbs
+            val actionVerbs = listOf(
+                "open", "launch", "text", "call", "email", "send", "set",
+                "search", "play", "like", "comment", "scroll", "tap",
+                "click", "type", "follow", "unfollow", "post", "share",
+                "download", "install", "check", "read", "delete", "save",
+                "bookmark", "retweet", "repost", "navigate", "go to",
+            )
+
+            // Split on "and", "then", "after that", commas
+            val clauses = lower.split(
+                Regex("\\b(?:and|then|after that|afterwards|next)\\b|,\\s*")
+            ).filter { it.isNotBlank() }
+
+            if (clauses.size < 2) return false
+
+            // Count how many clauses start with or contain an action verb
+            val actionClauses = clauses.count { clause ->
+                val trimmed = clause.trim()
+                actionVerbs.any { verb ->
+                    trimmed.startsWith(verb) || trimmed.startsWith("also $verb") ||
+                        trimmed.startsWith("please $verb")
+                }
+            }
+
+            return actionClauses >= 2
+        }
+
         /** Action kinds the dispatcher can actually execute today. */
         val SUPPORTED_KINDS = setOf(
             "read_calendar",
