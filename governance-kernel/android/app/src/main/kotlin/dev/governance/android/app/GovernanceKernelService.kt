@@ -117,12 +117,16 @@ class GovernanceKernelService : Service() {
             barriers = emptyList(),
             calibrator = calibrator,
             keyProvider = try {
-                AndroidKeystoreKeyProvider()
+                val kp = AndroidKeystoreKeyProvider()
+                // Verify signing actually works — some emulators create the
+                // Ed25519 key but fail at sign time (INCOMPATIBLE_DIGEST).
+                kp.sign("test".toByteArray())
+                kp
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) {
                     android.util.Log.w(
                         "GovernanceKernel",
-                        "Keystore Ed25519 unavailable, using debug software EC fallback",
+                        "Keystore Ed25519 signing failed, using debug software EC fallback",
                         e,
                     )
                     dev.governance.android.platform.SoftwareEcKeyProvider()

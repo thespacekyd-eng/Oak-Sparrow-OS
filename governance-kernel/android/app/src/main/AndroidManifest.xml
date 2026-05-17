@@ -29,6 +29,9 @@
     <!-- Contact lookup for SMS/call actions (resolve name → phone number). -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <!-- Required for AlarmClock.ACTION_SET_ALARM / ACTION_SET_TIMER intents. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
     <!--
         Android 11+ package visibility filter. The agent's open_app
         dispatcher uses PackageManager.getLaunchIntentForPackage() which
