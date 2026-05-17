@@ -122,9 +122,9 @@ private fun MainNavigation(
     // LLM wiring
     val cloudEnabled = hasCloudKey && llmMode != LlmMode.ON_DEVICE
     val planner = remember(llmMode) {
+        // Haiku for action planning — fast routing, JSON generation
         val cloud = CloudLlmEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
-            model = BuildConfig.CLOUD_MODEL,
         )
         val local = LlamaCppLlmEngine(context)
         val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
