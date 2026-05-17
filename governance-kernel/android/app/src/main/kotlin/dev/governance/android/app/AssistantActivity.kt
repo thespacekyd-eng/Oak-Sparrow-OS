@@ -144,47 +144,52 @@ private fun AssistantVoiceChat(
         }
     }
 
-    // Handle transcript → plan → execute → speak
+    // Shared logic for processing an instruction (voice or typed)
+    fun processInstruction(instruction: String) {
+        val exitPhrases = listOf("bye", "goodbye", "close", "done", "exit", "stop", "never mind")
+        if (exitPhrases.any { instruction.lowercase() == it }) {
+            scope.launch {
+                voiceController.speak("See you later!")
+                delay(1200)
+                onClose()
+            }
+            return
+        }
+
+        conversationHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
+
+        val ki = kernelInterface
+        if (ki == null) {
+            val msg = "Not connected to the governance kernel."
+            conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
+            voiceController.speak(msg)
+            return
+        }
+
+        scope.launch {
+            isProcessing = true
+            if (planner.isModelAvailable()) planner.loadModel()
+            val orchestrator = SpeculativeOrchestrator(
+                context, planner, ki, dispatcher, speculationLog,
+            )
+            val (planResult, _, _) = orchestrator.execute(instruction)
+            val text: String = when (planResult) {
+                is PlanResult.Success -> planResult.plan.summary
+                is PlanResult.Conversational -> planResult.message
+                is PlanResult.Error -> planResult.message
+            }
+            conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, text))
+            isProcessing = false
+            voiceController.speak(text)
+        }
+    }
+
+    // Handle voice transcript → plan → execute → speak
     LaunchedEffect(voiceState) {
         if (voiceState is VoiceState.Heard && chatInput.value.isNotBlank() && !isProcessing) {
             val instruction = chatInput.value.trim()
             chatInput.value = ""
-
-            // Exit phrases
-            val exitPhrases = listOf("bye", "goodbye", "close", "done", "exit", "stop", "never mind")
-            if (exitPhrases.any { instruction.lowercase() == it }) {
-                voiceController.speak("See you later!")
-                delay(1200)
-                onClose()
-                return@LaunchedEffect
-            }
-
-            conversationHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
-
-            val ki = kernelInterface
-            if (ki == null) {
-                val msg = "Not connected to the governance kernel."
-                conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
-                voiceController.speak(msg)
-                return@LaunchedEffect
-            }
-
-            scope.launch {
-                isProcessing = true
-                if (planner.isModelAvailable()) planner.loadModel()
-                val orchestrator = SpeculativeOrchestrator(
-                    context, planner, ki, dispatcher, speculationLog,
-                )
-                val (planResult, _, _) = orchestrator.execute(instruction)
-                val text: String = when (planResult) {
-                    is PlanResult.Success -> planResult.plan.summary
-                    is PlanResult.Conversational -> planResult.message
-                    is PlanResult.Error -> planResult.message
-                }
-                conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, text))
-                isProcessing = false
-                voiceController.speak(text)
-            }
+            processInstruction(instruction)
         }
     }
 
@@ -213,6 +218,11 @@ private fun AssistantVoiceChat(
                 voiceController.startListening()
             } else {
                 micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            }
+        },
+        onTextSend = { text ->
+            if (!isProcessing) {
+                processInstruction(text)
             }
         },
         onClose = onClose,

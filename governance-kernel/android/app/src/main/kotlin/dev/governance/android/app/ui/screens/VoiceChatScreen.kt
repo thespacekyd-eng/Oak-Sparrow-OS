@@ -8,10 +8,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.voice.VoiceState
@@ -35,10 +39,12 @@ fun VoiceChatScreen(
     voiceState: VoiceState,
     conversationHistory: List<VoiceTurn>,
     onMicTap: () -> Unit,
+    onTextSend: (String) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    var textInput by remember { mutableStateOf("") }
 
     LaunchedEffect(conversationHistory.size) {
         if (conversationHistory.isNotEmpty()) {
@@ -76,7 +82,7 @@ fun VoiceChatScreen(
             if (conversationHistory.isEmpty()) {
                 item {
                     Text(
-                        "Tap the mic and start talking.\nI'll respond naturally.",
+                        "Talk or type — I can help with anything on your phone.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -91,35 +97,115 @@ fun VoiceChatScreen(
             }
         }
 
-        // Voice orb area
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 48.dp, top = 16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            VoiceOrb(
-                voiceState = voiceState,
-                onTap = onMicTap,
+        // Voice state indicator (compact — only when actively listening/speaking)
+        val isVoiceActive = voiceState is VoiceState.Listening || voiceState is VoiceState.Speaking
+        if (isVoiceActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                VoiceOrb(
+                    voiceState = voiceState,
+                    onTap = onMicTap,
+                    size = 56.dp,
+                )
+            }
+        }
+
+        // Status text when voice is active
+        if (voiceState !is VoiceState.Idle) {
+            Text(
+                text = when (voiceState) {
+                    is VoiceState.Listening -> "Listening..."
+                    is VoiceState.Speaking -> "Speaking..."
+                    is VoiceState.Heard -> "Thinking..."
+                    is VoiceState.Error -> voiceState.reason
+                    is VoiceState.Idle -> ""
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp),
             )
         }
 
-        // Status text
-        Text(
-            text = when (voiceState) {
-                is VoiceState.Listening -> "Listening..."
-                is VoiceState.Speaking -> "Speaking..."
-                is VoiceState.Heard -> "Thinking..."
-                is VoiceState.Error -> voiceState.reason
-                is VoiceState.Idle -> "Tap to speak"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 32.dp),
-        )
+        // Input bar: text field + mic button + send button
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            tonalElevation = 2.dp,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Mic button
+                IconButton(
+                    onClick = onMicTap,
+                    modifier = Modifier.size(44.dp),
+                ) {
+                    Icon(
+                        imageVector = if (voiceState is VoiceState.Listening)
+                            Icons.Filled.MicOff
+                        else
+                            Icons.Filled.Mic,
+                        contentDescription = if (voiceState is VoiceState.Listening)
+                            "Stop listening"
+                        else
+                            "Start listening",
+                        tint = if (voiceState is VoiceState.Listening)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // Text input
+                OutlinedTextField(
+                    value = textInput,
+                    onValueChange = { textInput = it },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    placeholder = { Text("Type a message...") },
+                    shape = RoundedCornerShape(24.dp),
+                    singleLine = false,
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            if (textInput.isNotBlank()) {
+                                onTextSend(textInput.trim())
+                                textInput = ""
+                            }
+                        },
+                    ),
+                )
+
+                // Send button (visible when there's text)
+                if (textInput.isNotBlank()) {
+                    FilledIconButton(
+                        onClick = {
+                            onTextSend(textInput.trim())
+                            textInput = ""
+                        },
+                        modifier = Modifier.size(44.dp),
+                        shape = CircleShape,
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -127,6 +213,7 @@ fun VoiceChatScreen(
 private fun VoiceOrb(
     voiceState: VoiceState,
     onTap: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 80.dp,
 ) {
     val isActive = voiceState is VoiceState.Listening || voiceState is VoiceState.Speaking
 
@@ -163,7 +250,7 @@ private fun VoiceOrb(
         if (isActive) {
             Box(
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(size * 1.25f)
                     .scale(pulseScale * 1.2f)
                     .clip(CircleShape)
                     .background(orbColor.copy(alpha = glowAlpha * 0.3f)),
@@ -174,7 +261,7 @@ private fun VoiceOrb(
         FilledIconButton(
             onClick = onTap,
             modifier = Modifier
-                .size(80.dp)
+                .size(size)
                 .scale(if (isActive) pulseScale else 1f),
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(
@@ -184,7 +271,7 @@ private fun VoiceOrb(
             Icon(
                 imageVector = if (voiceState is VoiceState.Error) Icons.Filled.MicOff else Icons.Filled.Mic,
                 contentDescription = "Voice",
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(size * 0.45f),
             )
         }
     }
