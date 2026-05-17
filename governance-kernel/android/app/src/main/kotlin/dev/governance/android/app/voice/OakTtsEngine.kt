@@ -80,7 +80,7 @@ class OakTtsEngine(private val context: Context) {
                         tokens = "$dir/tokens.txt",
                         dataDir = "$dir/espeak-ng-data",
                     ),
-                    numThreads = 4,
+                    numThreads = Runtime.getRuntime().availableProcessors().coerceIn(2, 6),
                     debug = false,
                     provider = "cpu",
                 ),

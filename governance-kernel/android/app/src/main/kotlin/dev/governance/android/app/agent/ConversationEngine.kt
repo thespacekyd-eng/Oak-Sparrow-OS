@@ -81,8 +81,8 @@ class ConversationEngine(
             setRequestProperty("x-api-key", apiKey)
             setRequestProperty("anthropic-version", API_VERSION)
             doOutput = true
-            connectTimeout = 10_000
-            readTimeout = 60_000
+            connectTimeout = 8_000
+            readTimeout = 30_000
         }
 
         try {

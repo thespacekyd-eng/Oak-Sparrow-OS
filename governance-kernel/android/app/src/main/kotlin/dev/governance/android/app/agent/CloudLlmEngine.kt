@@ -114,8 +114,10 @@ class CloudLlmEngine(
         private const val TAG = "OakSparrowCloud"
         private const val API_URL = "https://api.anthropic.com/v1/messages"
         private const val API_VERSION = "2023-06-01"
-        const val DEFAULT_MODEL = "claude-opus-4-6"
-        const val DEFAULT_MAX_TOKENS = 512
+        // Haiku for action planning — 10x faster than Opus, more than
+        // capable for JSON plan generation and keyword routing.
+        const val DEFAULT_MODEL = "claude-haiku-4-5-20251001"
+        const val DEFAULT_MAX_TOKENS = 256
 
         /**
          * Extracts system and user content from the ChatML-formatted
