@@ -454,26 +454,26 @@ class ActionDispatcher(
      */
     private suspend fun dispatchUiInteract(task: String, extra: String?): DispatchResult {
         return try {
-            val engine = agentLoopEngine
-            if (engine == null) {
+            if (dev.governance.android.app.BuildConfig.CLOUD_API_KEY.isBlank()) {
                 return DispatchResult.Failed(
-                    "Cloud LLM required for complex UI tasks. Configure your API key in settings."
+                    "Cloud API key required for complex UI tasks. Configure in Settings."
                 )
-            }
-            if (!engine.isLoaded) {
-                val err = engine.loadModel()
-                if (err != null) return DispatchResult.Failed(err)
             }
 
             // Hide the assistant overlay so the target app gets full
             // accessibility tree access (background windows are truncated)
             AssistantActivity.hideOverlay()
-            delay(500) // let the window transition complete
 
-            val loop = AgentLoop(engine)
-            val screen = ScreenReader.read()
-            val currentApp = screen?.packageName ?: "unknown"
-            val result = loop.execute(task, currentApp)
+            // Wait for the target app to actually reach the foreground.
+            delay(3000)
+
+            // Use vision-based agent loop — takes screenshots and sends
+            // to Claude vision for reasoning. Works on ANY app regardless
+            // of accessibility tree quality.
+            val visionLoop = VisionAgentLoop(
+                apiKey = dev.governance.android.app.BuildConfig.CLOUD_API_KEY,
+            )
+            val result = visionLoop.execute(task)
 
             // Bring the assistant overlay back
             withContext(Dispatchers.Main) {
@@ -481,7 +481,7 @@ class ActionDispatcher(
             }
 
             if (result.success) {
-                DispatchResult.Success(result.summary + " (${result.steps.size} steps)")
+                DispatchResult.Success(result.summary + " (${result.stepsExecuted} steps)")
             } else {
                 DispatchResult.Failed(result.summary)
             }

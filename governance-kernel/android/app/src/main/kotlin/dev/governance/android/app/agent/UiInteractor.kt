@@ -54,6 +54,14 @@ object UiInteractor {
     }
 
     /**
+     * Taps at exact screen coordinates. Used by the vision-based agent
+     * loop where Claude returns pixel coordinates from screenshots.
+     */
+    suspend fun tapAtCoordinates(x: Int, y: Int): InteractionResult {
+        return tapByBounds("$x,$y", "($x, $y)")
+    }
+
+    /**
      * Taps at screen coordinates (parsed from element bounds).
      */
     private suspend fun tapByBounds(bounds: String, description: String): InteractionResult {
