@@ -1,6 +1,7 @@
 package dev.governance.android.app.ui.screens
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,22 +10,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.governance.android.app.ui.theme.OakPalette
 import dev.governance.android.app.voice.VoiceState
+import kotlin.math.PI
+import kotlin.math.sin
 
 /**
- * Full-screen voice mode — centered floating orb, no text input.
- * Tap the orb to start/stop listening. Like ChatGPT voice mode.
+ * Full-screen voice mode — audio-reactive floating orb.
+ * Continuous conversation: speak → Oak responds → auto-listens.
+ * Tap orb to start, tap while speaking to interrupt.
  */
 @Composable
 fun VoiceChatScreen(
@@ -36,67 +40,75 @@ fun VoiceChatScreen(
     modifier: Modifier = Modifier,
 ) {
     val lastAssistant = conversationHistory.lastOrNull { it.role == VoiceTurnRole.ASSISTANT }
-    val lastUser = conversationHistory.lastOrNull { it.role == VoiceTurnRole.USER }
+
+    // Get amplitude from state
+    val amplitude = when (voiceState) {
+        is VoiceState.Listening -> voiceState.amplitude
+        is VoiceState.Speaking -> voiceState.amplitude
+        else -> 0f
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(OakPalette.Background),
     ) {
-        // Close button (top right)
+        // Close button (top-left, like ChatGPT)
         IconButton(
             onClick = onClose,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(16.dp),
+                .padding(16.dp)
+                .size(40.dp),
         ) {
             Icon(
                 Icons.Filled.Close,
                 contentDescription = "Close",
                 tint = OakPalette.TextTertiary,
+                modifier = Modifier.size(24.dp),
             )
         }
 
-        // Center content: orb + status
+        // Center: orb + status
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 32.dp),
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Last response text (faded, above the orb)
-            if (lastAssistant != null && voiceState !is VoiceState.Listening) {
+            // Last response (faded, only when idle)
+            if (lastAssistant != null && voiceState is VoiceState.Idle) {
                 Text(
                     lastAssistant.text,
                     style = MaterialTheme.typography.bodyLarge,
                     color = OakPalette.TextSecondary,
                     textAlign = TextAlign.Center,
-                    maxLines = 4,
-                    modifier = Modifier.padding(bottom = 40.dp),
+                    maxLines = 3,
+                    modifier = Modifier
+                        .padding(horizontal = 40.dp)
+                        .padding(bottom = 48.dp),
                 )
             }
 
-            // The orb
-            VoiceOrb(
+            // Audio-reactive orb
+            AudioReactiveOrb(
                 voiceState = voiceState,
+                amplitude = amplitude,
                 onTap = onMicTap,
-                size = 120.dp,
+                size = 160.dp,
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(36.dp))
 
             // Status text
             Text(
                 text = when (voiceState) {
                     is VoiceState.Listening -> {
-                        val partial = voiceState.partial
-                        if (partial.isNotEmpty()) partial else "Listening..."
+                        if (voiceState.partial.isNotEmpty()) voiceState.partial else "Listening..."
                     }
-                    is VoiceState.Speaking -> "Speaking..."
+                    is VoiceState.Speaking -> ""
                     is VoiceState.Heard -> "Thinking..."
                     is VoiceState.Error -> voiceState.reason
-                    is VoiceState.Idle -> "Tap to speak"
+                    is VoiceState.Idle -> if (lastAssistant != null) "Tap to continue" else "Tap to speak"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = when (voiceState) {
@@ -105,115 +117,163 @@ fun VoiceChatScreen(
                     else -> OakPalette.TextTertiary
                 },
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
+                maxLines = 2,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 40.dp),
             )
         }
     }
 }
 
+/**
+ * Audio-reactive orb that responds to voice amplitude.
+ * Multiple concentric rings pulse and scale based on audio level.
+ * Inspired by ChatGPT's voice mode — organic, fluid motion.
+ */
 @Composable
-private fun VoiceOrb(
+private fun AudioReactiveOrb(
     voiceState: VoiceState,
+    amplitude: Float,
     onTap: () -> Unit,
-    size: Dp = 120.dp,
+    size: Dp = 160.dp,
 ) {
     val isActive = voiceState is VoiceState.Listening || voiceState is VoiceState.Speaking
     val isListening = voiceState is VoiceState.Listening
+    val isSpeaking = voiceState is VoiceState.Speaking
     val isThinking = voiceState is VoiceState.Heard
 
+    // Smooth the amplitude for fluid animation
+    val smoothAmplitude by animateFloatAsState(
+        targetValue = amplitude,
+        animationSpec = tween(100, easing = LinearEasing),
+        label = "amp",
+    )
+
+    // Continuous time for organic wave motion
     val infiniteTransition = rememberInfiniteTransition(label = "orb")
-
-    // Pulse animation
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (isActive) 1.12f else if (isThinking) 1.05f else 1f,
+    val time by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * PI.toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(if (isListening) 600 else 1200, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse,
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "pulse",
+        label = "time",
     )
 
-    // Outer glow rings
-    val ring1Alpha by infiniteTransition.animateFloat(
-        initialValue = 0.08f,
-        targetValue = if (isActive) 0.25f else 0.08f,
+    // Breathing pulse when idle
+    val idlePulse by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = EaseInOutSine),
+            animation = tween(2000, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse,
         ),
-        label = "ring1",
-    )
-    val ring2Alpha by infiniteTransition.animateFloat(
-        initialValue = 0.04f,
-        targetValue = if (isActive) 0.15f else 0.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = EaseInOutSine),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "ring2",
+        label = "idle",
     )
 
-    val orbColor = when (voiceState) {
-        is VoiceState.Listening -> OakPalette.Primary
-        is VoiceState.Speaking -> OakPalette.Primary.copy(alpha = 0.8f)
-        is VoiceState.Heard -> OakPalette.Primary.copy(alpha = 0.6f)
-        is VoiceState.Error -> OakPalette.Error
+    // Thinking pulse (faster)
+    val thinkPulse by infiniteTransition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "think",
+    )
+
+    val baseColor = when {
+        isListening -> OakPalette.Primary
+        isSpeaking -> OakPalette.Primary
+        isThinking -> OakPalette.Primary.copy(alpha = 0.7f)
         else -> OakPalette.SurfaceVariant
     }
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onTap,
-        ),
+        modifier = Modifier
+            .size(size * 1.8f) // Extra space for rings
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onTap,
+            ),
     ) {
-        // Outer glow ring 2
-        if (isActive || isThinking) {
-            Box(
-                modifier = Modifier
-                    .size(size * 1.6f)
-                    .scale(pulseScale * 1.1f)
-                    .clip(CircleShape)
-                    .background(orbColor.copy(alpha = ring2Alpha)),
-            )
-        }
+        // Animated rings drawn on Canvas
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(this.size.width / 2, this.size.height / 2)
+            val baseRadius = this.size.minDimension / 2 * 0.45f
 
-        // Outer glow ring 1
-        if (isActive || isThinking) {
-            Box(
-                modifier = Modifier
-                    .size(size * 1.3f)
-                    .scale(pulseScale)
-                    .clip(CircleShape)
-                    .background(orbColor.copy(alpha = ring1Alpha)),
-            )
+            if (isActive || isThinking) {
+                // Outer ring 3 — large, faint
+                val r3Scale = if (isActive) 1.5f + smoothAmplitude * 0.4f + sin(time) * 0.05f
+                              else thinkPulse * 1.4f
+                val r3Alpha = if (isActive) 0.06f + smoothAmplitude * 0.08f else 0.05f
+                drawCircle(
+                    color = baseColor.copy(alpha = r3Alpha),
+                    radius = baseRadius * r3Scale,
+                    center = center,
+                )
+
+                // Outer ring 2
+                val r2Scale = if (isActive) 1.25f + smoothAmplitude * 0.3f + sin(time * 1.3f) * 0.04f
+                              else thinkPulse * 1.2f
+                val r2Alpha = if (isActive) 0.1f + smoothAmplitude * 0.12f else 0.08f
+                drawCircle(
+                    color = baseColor.copy(alpha = r2Alpha),
+                    radius = baseRadius * r2Scale,
+                    center = center,
+                )
+
+                // Inner ring 1
+                val r1Scale = if (isActive) 1.08f + smoothAmplitude * 0.15f + sin(time * 1.7f) * 0.03f
+                              else thinkPulse * 1.05f
+                val r1Alpha = if (isActive) 0.15f + smoothAmplitude * 0.15f else 0.12f
+                drawCircle(
+                    color = baseColor.copy(alpha = r1Alpha),
+                    radius = baseRadius * r1Scale,
+                    center = center,
+                )
+            }
         }
 
         // Main orb
+        val orbScale = when {
+            isActive -> 1f + smoothAmplitude * 0.08f
+            isThinking -> thinkPulse
+            else -> idlePulse
+        }
+
         Surface(
             modifier = Modifier
-                .size(size)
-                .scale(if (isActive || isThinking) pulseScale else 1f),
+                .size(size * 0.55f * orbScale),
             shape = CircleShape,
-            color = orbColor,
+            color = baseColor,
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = when (voiceState) {
-                        is VoiceState.Error -> Icons.Filled.MicOff
-                        is VoiceState.Listening -> Icons.Filled.Mic
-                        else -> Icons.Filled.Mic
-                    },
-                    contentDescription = "Voice",
-                    modifier = Modifier.size(size * 0.4f),
-                    tint = if (voiceState is VoiceState.Idle)
-                        OakPalette.TextSecondary
-                    else
-                        OakPalette.OnPrimary,
-                )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.background(
+                    brush = Brush.radialGradient(
+                        colors = if (isActive) listOf(
+                            baseColor.copy(alpha = 0.9f),
+                            baseColor,
+                        ) else listOf(baseColor, baseColor),
+                    )
+                ),
+            ) {
+                if (!isActive && !isThinking) {
+                    Icon(
+                        Icons.Filled.Mic,
+                        contentDescription = "Tap to speak",
+                        modifier = Modifier.size(size * 0.15f),
+                        tint = if (voiceState is VoiceState.Idle)
+                            OakPalette.TextSecondary
+                        else
+                            OakPalette.OnPrimary,
+                    )
+                }
             }
         }
     }

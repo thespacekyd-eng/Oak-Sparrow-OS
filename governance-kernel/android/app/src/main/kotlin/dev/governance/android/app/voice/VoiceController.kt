@@ -74,12 +74,24 @@ class VoiceController(
     private val useOakTts: Boolean get() = oakTts.isAvailable
     private val ttsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** When true, automatically restarts listening after speaking finishes.
+     *  Enables ChatGPT-style continuous voice conversation. */
+    var autoListenEnabled = false
+
     init {
         // Try to initialize Kokoro neural TTS first
         if (oakTts.isAvailable) {
             val ok = oakTts.init()
             Log.i(TAG, "Kokoro neural TTS: ${if (ok) "ready" else "init failed, will use Android TTS"}")
-            oakTts.onDone = { transition(VoiceState.Event.SpeakDone) }
+            oakTts.onDone = {
+                transition(VoiceState.Event.SpeakDone)
+                if (autoListenEnabled && hasMicrophonePermission()) {
+                    // Small delay then auto-listen for continuous conversation
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        startListening()
+                    }, 300)
+                }
+            }
             oakTts.onError = { msg -> transition(VoiceState.Event.Fail(msg)) }
         }
 
@@ -302,7 +314,11 @@ class VoiceController(
     private fun buildListener() = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {}
         override fun onBeginningOfSpeech() {}
-        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onRmsChanged(rmsdB: Float) {
+            // Normalize RMS dB (-2 to 10 typical range) to 0.0-1.0
+            val normalized = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+            transition(VoiceState.Event.Amplitude(normalized))
+        }
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -390,6 +406,11 @@ class VoiceController(
         override fun onStart(utteranceId: String?) {}
         override fun onDone(utteranceId: String?) {
             transition(VoiceState.Event.SpeakDone)
+            if (autoListenEnabled && hasMicrophonePermission()) {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    startListening()
+                }, 300)
+            }
         }
         @Deprecated("Deprecated in Android 21+")
         override fun onError(utteranceId: String?) {
