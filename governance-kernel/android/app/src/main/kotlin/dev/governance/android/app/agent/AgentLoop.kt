@@ -64,7 +64,8 @@ class AgentLoop(
         for (step in 0 until maxSteps) {
             // Read current screen
             val screen = ScreenReader.read()
-            val screenText = screen?.toPrompt(50) ?: "[Cannot read screen — accessibility service not connected]"
+            val screenText = screen?.toPrompt(80) ?: "[Cannot read screen — accessibility service not connected]"
+            Log.d(TAG, "Screen for step $step (${screenText.length} chars):\n${screenText.take(500)}")
 
             // Build the LLM prompt with task + history + current screen
             val prompt = buildStepPrompt(task, steps, screenText, step)
@@ -77,6 +78,7 @@ class AgentLoop(
                 break
             }
 
+            Log.d(TAG, "LLM response: ${response.take(100)}")
             val action = parseAction(response)
             Log.i(TAG, "Step $step: action=${action.type} target=${action.target}")
 

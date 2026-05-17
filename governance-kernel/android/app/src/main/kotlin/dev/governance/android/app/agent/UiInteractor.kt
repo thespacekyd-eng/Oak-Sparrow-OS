@@ -186,14 +186,36 @@ object UiInteractor {
         return InteractionResult.Success("Waited ${timeoutMs}ms (no screen change)")
     }
 
+    /**
+     * Finds the best scrollable container for vertical scrolling.
+     * Prefers RecyclerView/ListView/ScrollView (vertical content) over
+     * ViewPager (horizontal tabs). This prevents the agent from swiping
+     * between Instagram's Feed/Reels/DMs tabs instead of scrolling the feed.
+     */
     private fun findScrollable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        if (node.isScrollable) return node
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            val result = findScrollable(child)
-            if (result != null) return result
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+        collectScrollables(node, candidates, depth = 0)
+        if (candidates.isEmpty()) return null
+
+        // Prefer vertical scroll containers over horizontal tab containers
+        val preferred = candidates.firstOrNull { n ->
+            val cls = n.className?.toString() ?: ""
+            cls.contains("RecyclerView") || cls.contains("ListView") ||
+                cls.contains("ScrollView") || cls.contains("NestedScrollView")
         }
-        return null
+        return preferred ?: candidates.last() // deepest scrollable as fallback
+    }
+
+    private fun collectScrollables(
+        node: AccessibilityNodeInfo,
+        out: MutableList<AccessibilityNodeInfo>,
+        depth: Int,
+    ) {
+        if (depth > 15) return
+        if (node.isScrollable) out.add(node)
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { collectScrollables(it, out, depth + 1) }
+        }
     }
 
     private fun findFocusedInput(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
