@@ -10,6 +10,7 @@ import android.provider.AlarmClock
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import dev.governance.android.app.AssistantActivity
 import dev.governance.android.platform.AccessibilityObservationService
 import dev.governance.attestation.AttestationVerifier
 import dev.governance.core.GateDecision
@@ -446,6 +447,10 @@ class ActionDispatcher(
      * Multi-step UI interaction via the accessibility agent loop.
      * The LLM observes the screen, reasons about what to do, and
      * executes taps/scrolls/types in a loop until the task is done.
+     *
+     * Before running, hides the assistant overlay so the target app's
+     * window is in the foreground with a full accessibility tree.
+     * After the loop completes, brings the overlay back.
      */
     private suspend fun dispatchUiInteract(task: String, extra: String?): DispatchResult {
         return try {
@@ -459,10 +464,21 @@ class ActionDispatcher(
                 val err = engine.loadModel()
                 if (err != null) return DispatchResult.Failed(err)
             }
+
+            // Hide the assistant overlay so the target app gets full
+            // accessibility tree access (background windows are truncated)
+            AssistantActivity.hideOverlay()
+            delay(500) // let the window transition complete
+
             val loop = AgentLoop(engine)
             val screen = ScreenReader.read()
             val currentApp = screen?.packageName ?: "unknown"
             val result = loop.execute(task, currentApp)
+
+            // Bring the assistant overlay back
+            withContext(Dispatchers.Main) {
+                AssistantActivity.showOverlay()
+            }
 
             if (result.success) {
                 DispatchResult.Success(result.summary + " (${result.steps.size} steps)")
@@ -470,6 +486,8 @@ class ActionDispatcher(
                 DispatchResult.Failed(result.summary)
             }
         } catch (e: Exception) {
+            // Try to restore overlay even on error
+            try { withContext(Dispatchers.Main) { AssistantActivity.showOverlay() } } catch (_: Exception) {}
             DispatchResult.Failed("UI interaction failed: ${e.message}")
         }
     }
