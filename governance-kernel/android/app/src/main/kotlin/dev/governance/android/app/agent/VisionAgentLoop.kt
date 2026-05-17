@@ -99,6 +99,14 @@ class VisionAgentLoop(
                     delay(1500)
                     consecutiveFailures = 0
                 }
+                is Action.LongPress -> {
+                    val realX = (action.x * coordScale).toInt()
+                    val realY = (action.y * coordScale).toInt()
+                    Log.i(TAG, "Step $step: LONG_PRESS screenshot(${action.x},${action.y}) → screen($realX,$realY)")
+                    UiInteractor.longPressAtCoordinates(realX, realY)
+                    delay(1500)
+                    consecutiveFailures = 0
+                }
                 is Action.Scroll -> {
                     Log.i(TAG, "Step $step: SCROLL ${action.direction}")
                     UiInteractor.scroll(action.direction)
@@ -260,6 +268,7 @@ class VisionAgentLoop(
 
     sealed class Action {
         data class Tap(val x: Int, val y: Int) : Action()
+        data class LongPress(val x: Int, val y: Int) : Action()
         data class Scroll(val direction: String) : Action()
         data class Type(val text: String) : Action()
         data object Wait : Action()
@@ -290,6 +299,12 @@ class VisionAgentLoop(
                     Action.Tap(coords.groupValues[1].toInt(), coords.groupValues[2].toInt())
                 } else null
             }
+            line.startsWith("LONG_PRESS ", ignoreCase = true) || line.startsWith("LONGPRESS ", ignoreCase = true) -> {
+                val coords = Regex("(\\d+)[,\\s]+(\\d+)").find(line)
+                if (coords != null) {
+                    Action.LongPress(coords.groupValues[1].toInt(), coords.groupValues[2].toInt())
+                } else null
+            }
             line.startsWith("SCROLL ", ignoreCase = true) ->
                 Action.Scroll(line.substringAfter(" ").trim().lowercase())
             line.startsWith("TYPE ", ignoreCase = true) ->
@@ -314,7 +329,8 @@ You are Oak, an AI agent that controls a phone by looking at screenshots.
 You see a screenshot of the phone screen and decide what action to take.
 
 ACTIONS — respond with EXACTLY ONE line, nothing else:
-TAP x y — tap at pixel coordinates (x, y) on the ORIGINAL screen resolution
+TAP x y — tap at pixel coordinates (x, y)
+LONG_PRESS x y — long-press at coordinates (for context menus, copy, select)
 SCROLL down — swipe up to scroll content down (see more below)
 SCROLL up — swipe down to scroll content up (see more above)
 TYPE text — type text into the focused input field
@@ -323,21 +339,19 @@ DONE summary — task is complete (explain what you did)
 ABORT reason — task cannot be completed
 
 IMPORTANT RULES:
-1. Return coordinates AS THEY APPEAR in the screenshot image. The image is
-   720px wide. Do NOT scale or multiply coordinates — just use pixel positions
-   from the screenshot directly.
+1. Coordinates are pixel positions on the 720px-wide screenshot image.
+   Do NOT scale or multiply — use positions directly from the screenshot.
 2. Look carefully at the screenshot. Identify buttons, icons, and text.
-3. For "like" on Instagram: find the heart icon below a post image (left side,
-   below the photo, row of icons: heart, comment, share, save). TAP the heart.
-4. Be precise with coordinates — tap the CENTER of the target element.
-5. One action per response. No explanations. Just the action line.
+3. Be precise with coordinates — tap the CENTER of the target element.
+4. One action per response. No explanations. Just the action line.
 
-Good: TAP 162 1350
-Good: SCROLL down
-Good: DONE Liked the first post on Instagram
-Bad: I can see the heart icon at approximately... TAP 162 1350
-Bad: The heart icon appears to already be filled...
-Bad: Looking at the screenshot, I can see...
+SOCIAL MEDIA TIPS:
+- For "like" on Instagram: heart icon is below post image, left side.
+- For scrolling feeds: use SCROLL down to see next post. Posts should
+  be centered on screen — scroll until the target post is well-framed.
+- For "scroll through feed": SCROLL down, observe each post, repeat.
+  When user says "scroll through" they want to browse the feed.
+- Use LONG_PRESS to copy text, select elements, or open context menus.
 
 RESPOND WITH ONLY THE ACTION LINE. NO OTHER TEXT.
         """.trim()

@@ -128,12 +128,14 @@ private fun MainNavigation(
         )
         val local = LlamaCppLlmEngine(context)
         val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
+        val webSearchEngine = WebSearchEngine()
         val conversation = if (cloudEnabled) {
             ConversationEngine(
                 apiKey = BuildConfig.CLOUD_API_KEY,
                 memoryBlock = oakMemory.toPromptBlock(),
                 onRemember = { fact -> oakMemory.addMemory(fact) },
                 onForget = { fact -> oakMemory.removeMemory(fact) },
+                webSearch = webSearchEngine,
             )
         } else null
         Planner(hybrid, conversationEngine = conversation)
