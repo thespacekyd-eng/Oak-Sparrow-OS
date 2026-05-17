@@ -3,6 +3,7 @@ package dev.governance.android.app.ui.screens
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Star
@@ -37,7 +39,7 @@ fun OnboardingScreen(
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pageCount = 4
+    val pageCount = 5
     val pagerState = rememberPagerState(pageCount = { pageCount })
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -46,6 +48,10 @@ fun OnboardingScreen(
     val assistantRoleLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { scope.launch { pagerState.animateScrollToPage(3) } }
+
+    val overlayLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { scope.launch { pagerState.animateScrollToPage(4) } }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -108,6 +114,24 @@ fun OnboardingScreen(
                     },
                 )
                 3 -> OnboardingPage(
+                    icon = Icons.Filled.Layers,
+                    title = stringResource(R.string.onboarding_title_5),
+                    body = stringResource(R.string.onboarding_body_5),
+                    buttonText = stringResource(R.string.btn_allow_overlay),
+                    onAction = {
+                        if (!Settings.canDrawOverlays(context)) {
+                            overlayLauncher.launch(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                            )
+                        } else {
+                            scope.launch { pagerState.animateScrollToPage(4) }
+                        }
+                    },
+                )
+                4 -> OnboardingPage(
                     icon = Icons.Filled.Notifications,
                     title = stringResource(R.string.onboarding_title_3),
                     body = stringResource(R.string.onboarding_body_3),

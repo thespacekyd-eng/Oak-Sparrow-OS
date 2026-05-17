@@ -160,6 +160,8 @@ class AccessibilityObservationService : AccessibilityService(), TreeCapture {
         instance = this
         // Wire callback from the static locator set by GovernanceKernelService
         outcomeCallback = callbackLocator?.invoke()
+        // Notify listener (e.g. to start floating overlay)
+        onConnectedListener?.invoke(this)
     }
 
     override fun onDestroy() {
@@ -189,6 +191,10 @@ class AccessibilityObservationService : AccessibilityService(), TreeCapture {
          */
         @Volatile
         var callbackLocator: (() -> OutcomeCallback)? = null
+
+        /** Called when the service connects. Used to start the floating overlay. */
+        @Volatile
+        var onConnectedListener: ((AccessibilityObservationService) -> Unit)? = null
 
         @Volatile
         private var instance: AccessibilityObservationService? = null
