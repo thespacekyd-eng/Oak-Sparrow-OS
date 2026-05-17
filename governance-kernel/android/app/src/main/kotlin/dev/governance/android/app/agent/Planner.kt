@@ -64,22 +64,26 @@ class Planner(
      * to multi-turn conversation for natural responses.
      */
     suspend fun plan(userInstruction: String): PlanResult = withContext(Dispatchers.IO) {
-        val keywordResult = planWithKeywords(userInstruction)
-        if (keywordResult is PlanResult.Success) return@withContext keywordResult
-
-        // If the input looks conversational and we have a conversation
-        // engine, route there for multi-turn context-aware responses.
+        // Check conversational FIRST when a conversation engine is
+        // available. This prevents the keyword router from stealing
+        // questions like "What makes you different from Google Assistant"
+        // (the word "google" would trigger search_web otherwise).
         if (conversationEngine != null && conversationEngine.isAvailable &&
             isConversational(userInstruction)) {
             return@withContext try {
                 val response = conversationEngine.converse(userInstruction)
                 PlanResult.Conversational(response)
             } catch (e: Exception) {
-                // Fall through to single-turn engine
                 try { android.util.Log.w("OakPlanner", "Conversation failed: ${e.message}") } catch (_: Throwable) {}
-                planWithEngineOrFallback(userInstruction, keywordResult)
+                // Fall through to keyword/engine path
+                val keywordResult = planWithKeywords(userInstruction)
+                if (keywordResult is PlanResult.Success) keywordResult
+                else planWithEngineOrFallback(userInstruction, keywordResult)
             }
         }
+
+        val keywordResult = planWithKeywords(userInstruction)
+        if (keywordResult is PlanResult.Success) return@withContext keywordResult
 
         planWithEngineOrFallback(userInstruction, keywordResult)
     }
