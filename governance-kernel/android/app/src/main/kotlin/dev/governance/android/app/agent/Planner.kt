@@ -64,10 +64,7 @@ class Planner(
      * to multi-turn conversation for natural responses.
      */
     suspend fun plan(userInstruction: String): PlanResult = withContext(Dispatchers.IO) {
-        // Check conversational FIRST when a conversation engine is
-        // available. This prevents the keyword router from stealing
-        // questions like "What makes you different from Google Assistant"
-        // (the word "google" would trigger search_web otherwise).
+        // 1. Conversational → ConversationEngine (multi-turn chat)
         if (conversationEngine != null && conversationEngine.isAvailable &&
             isConversational(userInstruction)) {
             return@withContext try {
@@ -75,16 +72,25 @@ class Planner(
                 PlanResult.Conversational(response)
             } catch (e: Exception) {
                 try { android.util.Log.w("OakPlanner", "Conversation failed: ${e.message}") } catch (_: Throwable) {}
-                // Fall through to keyword/engine path
                 val keywordResult = planWithKeywords(userInstruction)
                 if (keywordResult is PlanResult.Success) keywordResult
                 else planWithEngineOrFallback(userInstruction, keywordResult)
             }
         }
 
+        // 2. Compound/complex instructions → LLM reasoning (skip keywords).
+        //    "open instagram and like the first post" needs the LLM to
+        //    plan open_app + ui_interact, not just open_app.
+        if (engine.isLoaded && isCompound(userInstruction)) {
+            try { android.util.Log.i("OakPlanner", "Compound instruction, using LLM reasoning") } catch (_: Throwable) {}
+            return@withContext planWithEngine(userInstruction)
+        }
+
+        // 3. Simple single-action commands → keyword router (instant)
         val keywordResult = planWithKeywords(userInstruction)
         if (keywordResult is PlanResult.Success) return@withContext keywordResult
 
+        // 4. Keywords failed → LLM fallback
         planWithEngineOrFallback(userInstruction, keywordResult)
     }
 
@@ -152,6 +158,47 @@ class Planner(
 
             // Default: not clearly conversational, let LLM decide
             return false
+        }
+
+        /**
+         * Detects compound/multi-step instructions that the keyword
+         * router would mangle. These need LLM reasoning to plan correctly.
+         *
+         * Examples:
+         * - "open instagram and like the first post you see"
+         * - "text mom then set an alarm for 7am"
+         * - "go to twitter, scroll down, and retweet the first thing"
+         * - "open spotify and play my liked songs"
+         */
+        internal fun isCompound(instruction: String): Boolean {
+            val lower = instruction.lowercase().trim()
+
+            // Conjunctions joining clauses with action verbs
+            val actionVerbs = listOf(
+                "open", "launch", "text", "call", "email", "send", "set",
+                "search", "play", "like", "comment", "scroll", "tap",
+                "click", "type", "follow", "unfollow", "post", "share",
+                "download", "install", "check", "read", "delete", "save",
+                "bookmark", "retweet", "repost", "navigate", "go to",
+            )
+
+            // Split on "and", "then", "after that", commas
+            val clauses = lower.split(
+                Regex("\\b(?:and|then|after that|afterwards|next)\\b|,\\s*")
+            ).filter { it.isNotBlank() }
+
+            if (clauses.size < 2) return false
+
+            // Count how many clauses start with or contain an action verb
+            val actionClauses = clauses.count { clause ->
+                val trimmed = clause.trim()
+                actionVerbs.any { verb ->
+                    trimmed.startsWith(verb) || trimmed.startsWith("also $verb") ||
+                        trimmed.startsWith("please $verb")
+                }
+            }
+
+            return actionClauses >= 2
         }
 
         /** Action kinds the dispatcher can actually execute today. */
