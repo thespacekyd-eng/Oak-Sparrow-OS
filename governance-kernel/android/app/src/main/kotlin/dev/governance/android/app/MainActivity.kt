@@ -418,6 +418,34 @@ private fun MainNavigation(
                             micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                         }
                     },
+                    onTextSend = { text ->
+                        if (!isProcessing) {
+                            voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, text))
+                            val ki = kernelInterface
+                            if (ki == null) {
+                                val msg = "Not connected to governance service."
+                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
+                                voiceController.speak(msg)
+                                return@VoiceChatScreen
+                            }
+                            scope.launch {
+                                isProcessing = true
+                                if (planner.isModelAvailable()) planner.loadModel()
+                                val orchestrator = SpeculativeOrchestrator(
+                                    context, planner, ki, dispatcher, speculationLog,
+                                )
+                                val (planResult, _, _) = orchestrator.execute(text)
+                                val responseText: String = when (planResult) {
+                                    is PlanResult.Success -> planResult.plan.summary
+                                    is PlanResult.Conversational -> planResult.message
+                                    is PlanResult.Error -> planResult.message
+                                }
+                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, responseText))
+                                isProcessing = false
+                                voiceController.speak(responseText)
+                            }
+                        }
+                    },
                     onClose = { navController.popBackStack() },
                 )
 
