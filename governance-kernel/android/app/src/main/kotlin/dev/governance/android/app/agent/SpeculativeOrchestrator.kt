@@ -260,7 +260,6 @@ class SpeculativeOrchestrator(
         log: ExecutionLog,
     ) {
         log.update(index, ExecutionLog.StepState.GateChecking)
-        delay(150)
 
         val proposed = buildProposedAction(step)
         val decision: GateDecision = try {

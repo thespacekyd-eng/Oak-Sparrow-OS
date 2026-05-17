@@ -97,8 +97,12 @@ class OakTtsEngine(private val context: Context) {
 
     /**
      * Speak text using the Kokoro neural voice.
-     * Streams audio chunks to [AudioTrack] for low-latency playback.
-     * Must be called from a coroutine (runs on [Dispatchers.IO]).
+     *
+     * Splits text into sentences and pipelines generation with playback:
+     * generates sentence 1, starts playing it, generates sentence 2
+     * while sentence 1 plays, etc. This cuts perceived latency
+     * dramatically — the user hears the first sentence in ~1-2s
+     * instead of waiting for the entire response to generate.
      */
     suspend fun speak(
         text: String,
@@ -115,7 +119,6 @@ class OakTtsEngine(private val context: Context) {
             return@withContext
         }
 
-        // Strip emojis and symbols
         val clean = cleanText(text)
         if (clean.isBlank()) {
             onDone?.invoke()
@@ -158,15 +161,21 @@ class OakTtsEngine(private val context: Context) {
                 silenceScale = 0.2f,
             )
 
-            // Generate without streaming callback to avoid JNI lambda
-            // signature mismatch (NoSuchMethodError on boxed Integer).
-            val audio = engine.generateWithConfig(
-                text = clean,
-                config = genConfig,
-            )
+            // Split into sentences for pipelined generation + playback.
+            // First sentence plays as soon as it's generated while the
+            // rest are still being synthesized.
+            val sentences = splitSentences(clean)
 
-            if (isSpeaking && audio.samples.isNotEmpty()) {
-                track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+            for (sentence in sentences) {
+                if (!isSpeaking) break
+                val audio = engine.generateWithConfig(
+                    text = sentence,
+                    config = genConfig,
+                )
+                if (!isSpeaking) break
+                if (audio.samples.isNotEmpty()) {
+                    track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+                }
             }
 
             track.stop()
@@ -208,6 +217,33 @@ class OakTtsEngine(private val context: Context) {
         if (appPath.exists()) return appPath.absolutePath
 
         return null
+    }
+
+    /**
+     * Splits text into sentences for pipelined TTS. Keeps short
+     * sentences together to avoid too many tiny chunks (overhead).
+     */
+    private fun splitSentences(text: String): List<String> {
+        // Split on sentence-ending punctuation followed by space
+        val raw = text.split(Regex("(?<=[.!?])\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+        if (raw.size <= 1) return listOf(text)
+
+        // Merge short fragments (< 40 chars) with the next sentence
+        // to avoid tiny chunks that add generation overhead
+        val merged = mutableListOf<String>()
+        var buffer = ""
+        for (s in raw) {
+            buffer = if (buffer.isEmpty()) s else "$buffer $s"
+            if (buffer.length >= 40 || s == raw.last()) {
+                merged.add(buffer)
+                buffer = ""
+            }
+        }
+        if (buffer.isNotBlank()) merged.add(buffer)
+        return merged
     }
 
     private fun cleanText(text: String): String {

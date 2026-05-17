@@ -84,7 +84,7 @@ class ActionDispatcher(
         if (launchesApp) {
             Log.i("ActionDispatcher", "Hiding overlay for ${step.kind}")
             AssistantActivity.hideOverlay()
-            delay(500) // Let overlay fully hide before launching the target app
+            delay(200) // Let overlay start hiding before launching the target app
         }
 
         return when (step.kind) {
