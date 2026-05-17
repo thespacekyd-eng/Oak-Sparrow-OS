@@ -26,6 +26,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <!-- Contact lookup for SMS/call actions (resolve name → phone number). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <!--
         Android 11+ package visibility filter. The agent's open_app
         dispatcher uses PackageManager.getLaunchIntentForPackage() which

@@ -302,16 +302,15 @@ class Planner(
             // --- SMS / Text ---
             if (lower.contains("text ") || lower.contains("sms") ||
                 (lower.contains("message") && !lower.contains("email"))) {
-                val target = extractTarget(instruction)
-                val message = extractMessage(instruction)
+                val (smsTarget, smsMessage) = extractSmsTargetAndMessage(instruction)
                 return PlanResult.Success(Plan(
-                    summary = "Send text to $target",
+                    summary = "Send text to $smsTarget",
                     steps = listOf(PlannedStep(
                         kind = "send_sms",
-                        target = target,
+                        target = smsTarget,
                         rationale = "Send SMS as requested",
                         reversibility = Reversibility.OneShot,
-                        message = message,
+                        message = smsMessage,
                     )),
                 ))
             }
@@ -653,6 +652,63 @@ class Planner(
                 if (match != null) return match.groupValues[1].trim()
             }
             return null
+        }
+
+        /**
+         * Parses SMS instructions like:
+         *   "text Kaly Love hi"
+         *   "text Kaly Love saying hello there"
+         *   "send a text to Kaly Love that says hi"
+         *   "sms Mom hello"
+         *
+         * Returns (contactName, messageBody).
+         */
+        internal fun extractSmsTargetAndMessage(instruction: String): Pair<String, String?> {
+            val lower = instruction.lowercase()
+
+            // Strip leading verb: "text", "send a text to", "send sms to", "message"
+            val stripped = instruction
+                .replace(Regex("^(?:send\\s+(?:a\\s+)?(?:text|sms|message)\\s+(?:to\\s+)?)", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("^(?:text|sms|message)\\s+", RegexOption.IGNORE_CASE), "")
+                .trim()
+
+            // Check for explicit message delimiters: "saying X", "that says X", quoted "X"
+            val delimiterPatterns = listOf(
+                Regex("^(.+?)\\s+(?:saying|say|that says|that)\\s+(.+)$", RegexOption.IGNORE_CASE),
+                Regex("^(.+?)\\s+[\"'](.+?)[\"']\\s*$"),
+            )
+            for (p in delimiterPatterns) {
+                val m = p.find(stripped)
+                if (m != null) {
+                    return Pair(m.groupValues[1].trim(), m.groupValues[2].trim())
+                }
+            }
+
+            // No delimiter — split on last capitalized-name boundary.
+            // "Kaly Love hi" → name="Kaly Love", message="hi"
+            // Strategy: walk words; while a word starts uppercase, it's part of the name.
+            val words = stripped.split("\\s+".toRegex())
+            var nameEnd = 0
+            for (i in words.indices) {
+                if (words[i].first().isUpperCase()) {
+                    nameEnd = i + 1
+                } else {
+                    break
+                }
+            }
+
+            return if (nameEnd == 0) {
+                // No capitalized words — fall back to first word as name
+                Pair(words.first(), words.drop(1).joinToString(" ").ifBlank { null })
+            } else if (nameEnd >= words.size) {
+                // All words are capitalized — all name, no message
+                Pair(stripped, null)
+            } else {
+                Pair(
+                    words.take(nameEnd).joinToString(" "),
+                    words.drop(nameEnd).joinToString(" ").ifBlank { null },
+                )
+            }
         }
 
         internal fun buildPrompt(instruction: String): String = """
