@@ -101,6 +101,9 @@ android {
 }
 
 dependencies {
+    // sherpa-onnx: on-device neural TTS (Kokoro voices)
+    implementation(files("libs/sherpa-onnx-1.13.2.aar"))
+
     implementation(project(":android-platform"))
     // Kernel modules for types — no :adversarial or :testing
     implementation(project(":core"))

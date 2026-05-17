@@ -15,6 +15,8 @@ Thumbs.db
 # Android
 local.properties
 .cxx/
+android/tts-model/
+android/app/libs/*.aar
 
 # Kotlin
 *.class
