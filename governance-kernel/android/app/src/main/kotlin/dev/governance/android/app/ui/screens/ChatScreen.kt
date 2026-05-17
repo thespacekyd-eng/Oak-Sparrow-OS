@@ -78,7 +78,7 @@ fun ChatScreen(
                 when (message.role) {
                     ChatRole.USER -> UserBubble(message.text)
                     ChatRole.AGENT -> AgentBubble(message)
-                    ChatRole.SYSTEM -> {} // Hide system messages from the chat
+                    ChatRole.SYSTEM -> SystemBubble(message.text)
                 }
             }
 
@@ -244,6 +244,22 @@ private fun UserBubble(text: String) {
             )
         }
     }
+}
+
+@Composable
+private fun SystemBubble(text: String) {
+    if (text.startsWith("Not connected") || text.contains("error", ignoreCase = true)) {
+        // Show errors visibly
+        Text(
+            text,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = OakPalette.Error,
+        )
+    }
+    // Hide other system messages (LLM status, etc.)
 }
 
 @Composable
