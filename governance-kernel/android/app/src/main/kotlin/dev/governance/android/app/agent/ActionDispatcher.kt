@@ -3,10 +3,12 @@ package dev.governance.android.app.agent
 import android.app.WallpaperManager
 import android.content.Context
 import android.content.Intent
+import android.database.Cursor
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.net.Uri
 import android.provider.AlarmClock
+import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
@@ -186,16 +188,72 @@ class ActionDispatcher(
 
     private fun dispatchSendSms(target: String, message: String?): DispatchResult {
         return try {
+            // If target is already a phone number, use it directly
+            val number = if (target.any { it.isDigit() }) {
+                target.replace(Regex("[^0-9+*#]"), "")
+            } else {
+                // Look up contact name → phone number
+                resolveContactNumber(target)
+            }
+
+            val uri = if (number != null) "smsto:$number" else "smsto:"
             val intent = Intent(Intent.ACTION_SENDTO).apply {
-                data = Uri.parse("smsto:$target")
+                data = Uri.parse(uri)
                 putExtra("sms_body", message ?: "")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            DispatchResult.Success("SMS compose opened for $target.")
+            val desc = if (number != null) "$target ($number)" else target
+            DispatchResult.Success("SMS compose opened for $desc.")
         } catch (e: Exception) {
             DispatchResult.Failed("Could not open SMS: ${e.message}")
         }
+    }
+
+    /**
+     * Resolves a contact display name to their phone number.
+     * Uses a case-insensitive LIKE query on the contacts provider.
+     */
+    private fun resolveContactNumber(name: String): String? {
+        var cursor: Cursor? = null
+        try {
+            cursor = context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                arrayOf(name),
+                null,
+            )
+            if (cursor != null && cursor.moveToFirst()) {
+                val number = cursor.getString(0)
+                Log.i("ActionDispatcher", "Resolved contact '$name' → $number")
+                return number
+            }
+            // Try partial/fuzzy match
+            cursor?.close()
+            cursor = context.contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ),
+                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                arrayOf("%$name%"),
+                null,
+            )
+            if (cursor != null && cursor.moveToFirst()) {
+                val matchedName = cursor.getString(0)
+                val number = cursor.getString(1)
+                Log.i("ActionDispatcher", "Fuzzy resolved '$name' → '$matchedName' $number")
+                return number
+            }
+        } catch (e: Exception) {
+            Log.w("ActionDispatcher", "Contact lookup failed: ${e.message}")
+        } finally {
+            cursor?.close()
+        }
+        Log.w("ActionDispatcher", "No contact found for '$name'")
+        return null
     }
 
     private fun dispatchMakeCall(target: String): DispatchResult {
