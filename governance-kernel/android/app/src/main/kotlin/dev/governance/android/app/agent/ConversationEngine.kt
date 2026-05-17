@@ -18,7 +18,7 @@ import kotlinx.serialization.json.*
  */
 class ConversationEngine(
     private val apiKey: String,
-    private val model: String = "claude-sonnet-4-5-20250514",
+    private val model: String = "claude-opus-4-6",
     private val maxTokens: Int = 1024,
 ) {
     private val history = mutableListOf<Message>()
