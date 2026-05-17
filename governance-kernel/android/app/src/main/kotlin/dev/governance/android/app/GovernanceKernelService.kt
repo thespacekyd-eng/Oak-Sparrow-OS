@@ -54,8 +54,11 @@ class GovernanceKernelService : Service() {
     private var currentState: GovernanceState = StatePersistence.freshDefensiveState(debugMode = BuildConfig.DEBUG)
     private val stateLock = Any()
 
-    // Track recent decisions by auditId for resolve() lookups
+    // Track recent decisions by auditId for resolve() lookups.
+    // Entries older than DECISION_TTL_MS are evicted to prevent memory
+    // leaks from unresolved decisions (e.g., caller crash / disconnect).
     private val pendingDecisions = ConcurrentHashMap<String, GateDecision>()
+    private val decisionTimestamps = ConcurrentHashMap<String, Long>()
 
     private val binder = object : AgentKernelInterface.Stub() {
 
@@ -173,10 +176,23 @@ class GovernanceKernelService : Service() {
 
     private fun synchronizedDecide(proposed: ProposedAction): Pair<GateDecision, GovernanceState> {
         synchronized(stateLock) {
+            evictStaleDecisions()
             val decision = kernel.decide(currentState, proposed)
             pendingDecisions[decision.auditId.value] = decision
+            decisionTimestamps[decision.auditId.value] = System.currentTimeMillis()
             updateNotification()
             return decision to currentState
+        }
+    }
+
+    private fun evictStaleDecisions() {
+        val now = System.currentTimeMillis()
+        val staleIds = decisionTimestamps.entries
+            .filter { now - it.value > DECISION_TTL_MS }
+            .map { it.key }
+        for (id in staleIds) {
+            pendingDecisions.remove(id)
+            decisionTimestamps.remove(id)
         }
     }
 
@@ -274,5 +290,6 @@ class GovernanceKernelService : Service() {
     companion object {
         const val CHANNEL_ID = "governance_service"
         const val NOTIFICATION_ID = 1
+        const val DECISION_TTL_MS = 120_000L // 2 minutes
     }
 }

@@ -240,7 +240,7 @@ class ActionDispatcher(
             )
             if (cursor != null && cursor.moveToFirst()) {
                 val number = cursor.getString(0)
-                Log.i("ActionDispatcher", "Resolved contact '$name' → $number")
+                Log.i("ActionDispatcher", "Resolved contact to number (redacted)")
                 return number
             }
             // Try partial/fuzzy match
@@ -258,7 +258,7 @@ class ActionDispatcher(
             if (cursor != null && cursor.moveToFirst()) {
                 val matchedName = cursor.getString(0)
                 val number = cursor.getString(1)
-                Log.i("ActionDispatcher", "Fuzzy resolved '$name' → '$matchedName' $number")
+                Log.i("ActionDispatcher", "Fuzzy resolved contact to number (redacted)")
                 return number
             }
         } catch (e: Exception) {
@@ -319,8 +319,13 @@ class ActionDispatcher(
     private fun dispatchOpenUrl(target: String): DispatchResult {
         return try {
             val url = if (target.startsWith("http")) target else "https://$target"
+            val uri = Uri.parse(url)
+            val scheme = uri.scheme?.lowercase()
+            if (scheme != "https" && scheme != "http") {
+                return DispatchResult.Failed("Only http/https URLs are allowed, got: $scheme")
+            }
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                data = Uri.parse(url)
+                data = uri
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
@@ -570,18 +575,44 @@ class ActionDispatcher(
      * - message = optional data URI
      */
     private fun dispatchCustomIntent(action: String, dataUri: String?): DispatchResult {
+        // Security: only allow safe intent actions to prevent injection
+        if (action !in ALLOWED_CUSTOM_INTENTS) {
+            Log.w("ActionDispatcher", "Blocked custom_intent: $action (not in allowlist)")
+            return DispatchResult.Failed("Intent action '$action' is not allowed.")
+        }
         return try {
             val intent = Intent(action).apply {
-                if (!dataUri.isNullOrBlank()) data = Uri.parse(dataUri)
+                if (!dataUri.isNullOrBlank()) {
+                    val uri = Uri.parse(dataUri)
+                    // Block dangerous URI schemes
+                    val scheme = uri.scheme?.lowercase()
+                    if (scheme != null && scheme !in setOf("https", "http", "content", "geo", "tel", "mailto")) {
+                        return DispatchResult.Failed("URI scheme '$scheme' is not allowed.")
+                    }
+                    data = uri
+                }
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            Log.i("ActionDispatcher", "custom_intent: action=$action data=$dataUri")
             DispatchResult.Success("Launched: $action")
         } catch (e: Exception) {
             DispatchResult.Failed("Could not launch intent '$action': ${e.message}")
         }
     }
+
+    private val ALLOWED_CUSTOM_INTENTS = setOf(
+        "android.intent.action.VIEW",
+        "android.intent.action.SEND",
+        "android.intent.action.SENDTO",
+        "android.intent.action.SET_WALLPAPER",
+        "android.intent.action.PICK",
+        "android.settings.SETTINGS",
+        "android.settings.WIFI_SETTINGS",
+        "android.settings.BLUETOOTH_SETTINGS",
+        "android.settings.DISPLAY_SETTINGS",
+        "android.settings.SOUND_SETTINGS",
+        "android.settings.BATTERY_SAVER_SETTINGS",
+    )
 
     // --- Parsing helpers ---
 
