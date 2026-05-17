@@ -175,5 +175,18 @@
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
+        <!--
+            Floating mic bubble that stays on top of all apps.
+            Tapping it launches AssistantActivity for voice chat.
+        -->
+        <service
+            android:name=".FloatingOakService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating_assistant" />
+        </service>
+
     </application>
 </manifest>

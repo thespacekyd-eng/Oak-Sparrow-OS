@@ -4,50 +4,40 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.*
 import dev.governance.android.app.agent.*
-import dev.governance.android.app.ui.screens.AssistantOverlayScreen
+import dev.governance.android.app.ui.screens.VoiceChatScreen
+import dev.governance.android.app.ui.screens.VoiceTurn
+import dev.governance.android.app.ui.screens.VoiceTurnRole
 import dev.governance.android.app.ui.theme.OakSparrowTheme
 import dev.governance.android.app.voice.VoiceController
 import dev.governance.android.app.voice.VoiceState
-import dev.governance.android.platform.parcel.ProposedActionParcel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Voice-first assistant entry point — the Siri-style invocation.
+ * Full voice chat assistant — the primary assistant entry point.
  *
- * Registered against `ACTION_ASSIST` and `VOICE_COMMAND` intents in the
- * manifest. When Oak & Sparrow is set as the device's default Digital
- * assistant app (Settings → Apps → Default apps → Digital assistant
- * app), long-press home (or the equivalent assist gesture) launches
- * this activity in a translucent immersive overlay.
+ * Launched by:
+ * - Long-press home (ACTION_ASSIST / VOICE_COMMAND)
+ * - Floating mic bubble tap
+ * - Voice chat button in the app
  *
- * Behavior:
- * 1. On resume, immediately request the mic permission (if not granted)
- *    and start listening.
- * 2. Recognized transcript → planner → kernel.decide() → dispatcher
- *    (every action still gates through the governance kernel — voice is
- *    just a different input modality, not a permission grant).
- * 3. Speak the response via TTS.
- * 4. Either offer to ask another question, or auto-close after speaking.
+ * This is the full LLM voice mode: continuous multi-turn conversation
+ * with Claude, plus full task execution (open apps, send messages,
+ * UI interaction). Every action still gates through the governance kernel.
  *
- * Implementation notes:
- * - `singleInstance` launch mode prevents stale intents from stacking.
- * - Translucent theme keeps whatever was on screen visible behind us.
- * - We bind to the same [GovernanceKernelService] that MainActivity
- *   uses, so kernel state is consistent across entry points.
+ * Say "bye", "done", or "close" to dismiss. Translucent theme keeps
+ * whatever app was on screen visible behind the overlay.
  */
 class AssistantActivity : ComponentActivity() {
 
-    // MutableState so the composable recomposes when the service connects.
-    // Plain var would be captured as null at initial composition and never update.
-    private val kernelState = androidx.compose.runtime.mutableStateOf<AgentKernelInterface?>(null)
+    private val kernelState = mutableStateOf<AgentKernelInterface?>(null)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
@@ -60,13 +50,11 @@ class AssistantActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Make sure the foreground governance service is running before
-        // the user starts speaking. Cheap if already up.
         startForegroundService(Intent(this, GovernanceKernelService::class.java))
 
         setContent {
             OakSparrowTheme {
-                AssistantHost(
+                AssistantVoiceChat(
                     kernelInterface = kernelState.value,
                     context = this,
                     onClose = { finish() },
@@ -89,20 +77,17 @@ class AssistantActivity : ComponentActivity() {
     }
 }
 
-@androidx.compose.runtime.Composable
-private fun AssistantHost(
+@Composable
+private fun AssistantVoiceChat(
     kernelInterface: AgentKernelInterface?,
     context: Context,
     onClose: () -> Unit,
 ) {
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
+    val llmMode = remember { LlmPreference.getLlmMode(context) }
 
-    // Same Planner + LLM engine wiring as MainActivity. We construct
-    // fresh instances here because the activity may be invoked while
-    // MainActivity is in the background or not even running.
-    val llmMode = androidx.compose.runtime.remember { LlmPreference.getLlmMode(context) }
-
-    val planner = androidx.compose.runtime.remember {
+    // Planner + LLM wiring
+    val planner = remember {
         val cloud = CloudLlmEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
             model = BuildConfig.CLOUD_MODEL,
@@ -110,98 +95,82 @@ private fun AssistantHost(
         val local = LlamaCppLlmEngine(context)
         val cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank() && llmMode != LlmMode.ON_DEVICE
         val hybrid = HybridLlmEngine(
-            cloud = cloud,
-            local = local,
-            cloudEnabled = cloudEnabled,
+            cloud = cloud, local = local, cloudEnabled = cloudEnabled,
         )
         val conversation = if (cloudEnabled) ConversationEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
         ) else null
         Planner(hybrid, conversationEngine = conversation)
     }
-    val dispatcher = androidx.compose.runtime.remember {
+    val dispatcher = remember {
         val cloud = CloudLlmEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
             model = BuildConfig.CLOUD_MODEL,
         )
         ActionDispatcher(context, agentLoopEngine = cloud)
     }
-    val speculationLog = androidx.compose.runtime.remember { SpeculationLog() }
+    val speculationLog = remember { SpeculationLog() }
 
-    // Voice controller — autoStart true: as soon as the activity is
-    // resumed and permission is granted, start listening.
-    val transcript = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf("")
-    }
-    val responseText = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf("")
-    }
-    val voiceController = androidx.compose.runtime.remember {
+    // Voice
+    val chatInput = remember { mutableStateOf("") }
+    val voiceController = remember {
         VoiceController(context) { recognized ->
-            transcript.value = recognized
+            chatInput.value = recognized
         }
     }
     val voiceState = voiceController.state.collectAsState().value
-    val voiceAvailable = androidx.compose.runtime.remember {
-        voiceController.isRecognitionAvailable()
+    val conversationHistory = remember { mutableStateListOf<VoiceTurn>() }
+    var isProcessing by remember { mutableStateOf(false) }
+
+    // Permission
+    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) voiceController.startListening()
     }
 
-    // Permission gate — we MUST have RECORD_AUDIO before listening.
-    // If not granted, show the friendly explanation in the overlay
-    // and request it; on grant, start listening immediately.
-    val permissionState = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(
-            voiceController.hasMicrophonePermission()
-        )
-    }
-    val micPermissionLauncher =
-        androidx.activity.compose.rememberLauncherForActivityResult(
-            ActivityResultContracts.RequestPermission()
-        ) { granted ->
-            permissionState.value = granted
-            if (granted) voiceController.startListening()
-        }
-
-    androidx.compose.runtime.DisposableEffect(Unit) {
+    DisposableEffect(Unit) {
         onDispose { voiceController.shutdown() }
     }
 
-    // Auto-start the listen loop on entry.
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        when {
-            !voiceAvailable -> {
-                responseText.value = "On-device speech recognition isn't available on this device."
-            }
-            !voiceController.hasMicrophonePermission() -> {
-                micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-            }
-            else -> voiceController.startListening()
+    // Auto-start listening on entry
+    LaunchedEffect(Unit) {
+        if (planner.isModelAvailable()) planner.loadModel()
+        planner.resetConversation()
+        if (voiceController.hasMicrophonePermission()) {
+            voiceController.startListening()
+        } else {
+            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
         }
     }
 
-    // When a transcript lands, route it through Planner → Kernel →
-    // Dispatcher (same path as MainActivity's chat). Kernel still
-    // gates every action.
-    androidx.compose.runtime.LaunchedEffect(voiceState) {
-        if (voiceState is VoiceState.Heard && transcript.value.isNotBlank()) {
-            val instruction = transcript.value
-            transcript.value = ""
+    // Handle transcript → plan → execute → speak
+    LaunchedEffect(voiceState) {
+        if (voiceState is VoiceState.Heard && chatInput.value.isNotBlank() && !isProcessing) {
+            val instruction = chatInput.value.trim()
+            chatInput.value = ""
 
-            // Exit phrases close the overlay
+            // Exit phrases
             val exitPhrases = listOf("bye", "goodbye", "close", "done", "exit", "stop", "never mind")
-            if (exitPhrases.any { instruction.lowercase().trim() == it }) {
+            if (exitPhrases.any { instruction.lowercase() == it }) {
+                voiceController.speak("See you later!")
+                delay(1200)
                 onClose()
                 return@LaunchedEffect
             }
 
+            conversationHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
+
             val ki = kernelInterface
             if (ki == null) {
                 val msg = "Not connected to the governance kernel."
-                responseText.value = msg
+                conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
                 voiceController.speak(msg)
                 return@LaunchedEffect
             }
+
             scope.launch {
+                isProcessing = true
                 if (planner.isModelAvailable()) planner.loadModel()
                 val orchestrator = SpeculativeOrchestrator(
                     context, planner, ki, dispatcher, speculationLog,
@@ -212,35 +181,40 @@ private fun AssistantHost(
                     is PlanResult.Conversational -> planResult.message
                     is PlanResult.Error -> planResult.message
                 }
-                responseText.value = text
+                conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, text))
+                isProcessing = false
                 voiceController.speak(text)
             }
         }
     }
 
-    // After device TTS finishes, start listening again for the next
-    // turn. Multi-turn conversation: the user can keep talking.
-    // Say "bye" or "done" to close.
-    androidx.compose.runtime.LaunchedEffect(voiceState) {
-        if (voiceState is VoiceState.Idle && responseText.value.isNotEmpty()) {
-            kotlinx.coroutines.delay(400)
-            // Re-listen for next turn instead of closing
+    // After TTS finishes, auto-listen for next turn
+    LaunchedEffect(voiceState) {
+        if (voiceState is VoiceState.Idle && conversationHistory.isNotEmpty()) {
+            delay(300)
             if (voiceController.hasMicrophonePermission()) {
                 voiceController.startListening()
             }
         }
     }
 
-    AssistantOverlayScreen(
+    VoiceChatScreen(
         voiceState = voiceState,
-        transcript = transcript.value,
-        response = responseText.value,
-        permissionDenied = !permissionState.value,
-        onCancel = { onClose() },
-        onRetry = {
-            responseText.value = ""
-            transcript.value = ""
-            voiceController.startListening()
+        conversationHistory = conversationHistory,
+        onMicTap = {
+            if (voiceState is VoiceState.Listening) {
+                voiceController.cancelListening()
+                return@VoiceChatScreen
+            }
+            if (voiceState is VoiceState.Speaking) {
+                voiceController.stopSpeaking()
+            }
+            if (voiceController.hasMicrophonePermission()) {
+                voiceController.startListening()
+            } else {
+                micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+            }
         },
+        onClose = onClose,
     )
 }

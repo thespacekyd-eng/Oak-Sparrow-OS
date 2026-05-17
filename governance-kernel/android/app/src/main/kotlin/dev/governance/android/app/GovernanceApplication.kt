@@ -1,17 +1,24 @@
 package dev.governance.android.app
 
 import android.app.Application
-import android.content.Intent
+import android.provider.Settings
+import dev.governance.android.platform.AccessibilityObservationService
 
 /**
  * Application class for the governance host app.
- * Starts the [GovernanceKernelService] on app launch.
+ * Wires the accessibility service connection listener to auto-start
+ * the floating mic overlay when accessibility is enabled.
  */
 class GovernanceApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // The service will be started explicitly when the user completes onboarding.
-        // We don't auto-start here to avoid running before permissions are granted.
+        // When the accessibility service connects, start the floating
+        // overlay bubble so the user can talk to Oak from any app.
+        AccessibilityObservationService.onConnectedListener = { service ->
+            if (Settings.canDrawOverlays(service)) {
+                FloatingOakService.start(service)
+            }
+        }
     }
 }
