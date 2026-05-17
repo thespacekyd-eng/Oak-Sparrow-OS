@@ -70,41 +70,52 @@ object ScreenReader {
     fun read(): ScreenState? {
         val service = AccessibilityObservationService.getInstance() ?: return null
 
-        // Use rootInActiveWindow first — when the overlay is hidden this
-        // returns the target app's tree directly. Only scan windows as
-        // fallback if rootInActiveWindow returns our own package.
+        // Collect elements from ALL app windows, not just rootInActiveWindow.
+        // rootInActiveWindow often returns a truncated tree (especially for
+        // complex apps like Instagram), while iterating service.windows gives
+        // access to each window's full node tree.
         val ownPkg = "dev.governance.android"
-        var root = service.rootInActiveWindow
+        val skipPackages = setOf(
+            ownPkg,
+            "com.android.systemui",
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+            "com.google.android.inputmethod.latin",
+        )
 
-        if (root != null && root.packageName?.toString() == ownPkg) {
-            // Overlay is still showing — find the app behind it
-            val skipPackages = setOf(
-                ownPkg,
-                "com.android.systemui",
-                "com.android.launcher",
-                "com.google.android.apps.nexuslauncher",
-                "com.google.android.inputmethod.latin",
-            )
-            root = try {
-                service.windows
-                    ?.sortedByDescending { it.layer }
-                    ?.mapNotNull { w -> w.root?.let { r -> r to r.packageName?.toString() } }
-                    ?.firstOrNull { (_, pkg) -> pkg != null && pkg !in skipPackages }
-                    ?.first
-            } catch (_: Exception) { null } ?: root
+        // Try windows API first for richer tree
+        var root: AccessibilityNodeInfo? = null
+        val allRoots = mutableListOf<AccessibilityNodeInfo>()
+        try {
+            service.windows?.forEach { w ->
+                val r = w.root ?: return@forEach
+                val pkg = r.packageName?.toString() ?: return@forEach
+                if (pkg !in skipPackages) {
+                    allRoots.add(r)
+                    if (root == null) root = r  // first non-skip window
+                }
+            }
+        } catch (_: Exception) { }
+
+        // Fallback to rootInActiveWindow
+        if (root == null) {
+            root = service.rootInActiveWindow ?: return null
+            allRoots.clear()
+            allRoots.add(root!!)
         }
-
-        if (root == null) return null
 
         val elements = mutableListOf<ScreenElement>()
         var index = 0
+        var totalNodes = 0
 
-        try {
-            collectElements(root, elements, index = { index++ }, depth = 0)
-        } catch (_: Exception) { }
+        for (r in allRoots) {
+            try {
+                collectElements(r, elements, index = { index++ }, counter = { totalNodes++ }, depth = 0)
+            } catch (_: Exception) { }
+        }
 
-        val pkg = root.packageName?.toString() ?: "unknown"
-        Log.i("ScreenReader", "Read $pkg: ${elements.size} elements (${elements.count { it.isClickable }} clickable)")
+        val pkg = root!!.packageName?.toString() ?: "unknown"
+        Log.i("ScreenReader", "Read $pkg: ${elements.size} elements (${elements.count { it.isClickable }} clickable) from $totalNodes total nodes, ${allRoots.size} windows")
         return ScreenState(pkg, elements)
     }
 
@@ -112,9 +123,11 @@ object ScreenReader {
         node: AccessibilityNodeInfo,
         out: MutableList<ScreenElement>,
         index: () -> Int,
+        counter: () -> Unit,
         depth: Int,
     ) {
-        if (depth > 12) return
+        if (depth > 15) return
+        counter()
 
         val hasText = !node.text.isNullOrBlank()
         val hasDesc = !node.contentDescription.isNullOrBlank()
@@ -148,7 +161,7 @@ object ScreenReader {
         }
 
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { collectElements(it, out, index, depth + 1) }
+            node.getChild(i)?.let { collectElements(it, out, index, counter, depth + 1) }
         }
     }
 }
