@@ -62,6 +62,32 @@ object UiInteractor {
     }
 
     /**
+     * Long-presses at exact screen coordinates. Used for context menus,
+     * text selection, copy operations.
+     */
+    suspend fun longPressAtCoordinates(x: Int, y: Int): InteractionResult {
+        val service = AccessibilityObservationService.getInstance()
+            ?: return InteractionResult.Failed("Accessibility service not connected")
+
+        try {
+            val path = android.accessibilityservice.GestureDescription.Builder()
+                .addStroke(
+                    android.accessibilityservice.GestureDescription.StrokeDescription(
+                        android.graphics.Path().apply { moveTo(x.toFloat(), y.toFloat()) },
+                        0, 800 // 800ms hold = long press
+                    )
+                )
+                .build()
+            service.dispatchGesture(path, null, null)
+            delay(1200) // Wait for long-press result + menu
+            Log.i(TAG, "Long-pressed at ($x, $y)")
+            return InteractionResult.Success("Long-pressed at ($x, $y)")
+        } catch (e: Exception) {
+            return InteractionResult.Failed("Long press failed: ${e.message}")
+        }
+    }
+
+    /**
      * Taps at screen coordinates (parsed from element bounds).
      */
     private suspend fun tapByBounds(bounds: String, description: String): InteractionResult {
