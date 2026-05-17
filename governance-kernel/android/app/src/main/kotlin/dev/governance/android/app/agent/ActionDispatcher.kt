@@ -80,7 +80,11 @@ class ActionDispatcher(
             "open_app", "send_sms", "make_call", "send_email", "share_to_social_app",
             "open_url", "search_web", "get_directions", "take_photo", "play_music",
         )
-        if (launchesApp) AssistantActivity.hideOverlay()
+        if (launchesApp) {
+            Log.i("ActionDispatcher", "Hiding overlay for ${step.kind}")
+            AssistantActivity.hideOverlay()
+            delay(500) // Let overlay fully hide before launching the target app
+        }
 
         return when (step.kind) {
             "read_calendar" -> dispatchReadCalendar()
