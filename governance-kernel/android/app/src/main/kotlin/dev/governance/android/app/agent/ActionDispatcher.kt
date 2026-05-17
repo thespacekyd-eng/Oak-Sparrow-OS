@@ -79,6 +79,7 @@ class ActionDispatcher(
         val launchesApp = step.kind in setOf(
             "open_app", "send_sms", "make_call", "send_email", "share_to_social_app",
             "open_url", "search_web", "get_directions", "take_photo", "play_music",
+            "set_alarm", "set_timer", "create_event",
         )
         if (launchesApp) {
             Log.i("ActionDispatcher", "Hiding overlay for ${step.kind}")
