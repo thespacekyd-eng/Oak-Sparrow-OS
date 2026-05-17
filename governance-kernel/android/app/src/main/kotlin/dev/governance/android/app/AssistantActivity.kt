@@ -39,6 +39,29 @@ class AssistantActivity : ComponentActivity() {
 
     private val kernelState = mutableStateOf<AgentKernelInterface?>(null)
 
+    companion object {
+        /**
+         * Static reference for the agent loop to hide/show the overlay.
+         * When the agent needs to interact with an app behind us,
+         * it calls [hideOverlay] to move the activity to the back,
+         * giving the target app full accessibility tree access.
+         */
+        @Volatile
+        private var currentInstance: AssistantActivity? = null
+
+        fun hideOverlay() {
+            currentInstance?.moveTaskToBack(true)
+        }
+
+        fun showOverlay() {
+            val ctx = currentInstance ?: return
+            val intent = Intent(ctx, AssistantActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            ctx.startActivity(intent)
+        }
+    }
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             kernelState.value = AgentKernelInterface.Stub.asInterface(service)
@@ -50,6 +73,7 @@ class AssistantActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentInstance = this
         startForegroundService(Intent(this, GovernanceKernelService::class.java))
 
         setContent {
@@ -74,6 +98,11 @@ class AssistantActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         try { unbindService(connection) } catch (_: IllegalArgumentException) {}
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (currentInstance === this) currentInstance = null
     }
 }
 

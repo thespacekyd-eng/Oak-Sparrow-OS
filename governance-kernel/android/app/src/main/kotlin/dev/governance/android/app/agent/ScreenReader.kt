@@ -70,25 +70,31 @@ object ScreenReader {
     fun read(): ScreenState? {
         val service = AccessibilityObservationService.getInstance() ?: return null
 
-        // Try to find the target app window (not Oak, not system UI)
-        val skipPackages = setOf(
-            "dev.governance.android",
-            "com.android.systemui",
-            "com.android.launcher",
-            "com.google.android.apps.nexuslauncher",
-        )
-        var root = try {
-            service.windows
-                ?.sortedByDescending { it.layer }  // higher layer = more foreground
-                ?.mapNotNull { w -> w.root?.let { r -> r to r.packageName?.toString() } }
-                ?.firstOrNull { (_, pkg) -> pkg != null && pkg !in skipPackages }
-                ?.first
-        } catch (_: Exception) { null }
+        // Use rootInActiveWindow first — when the overlay is hidden this
+        // returns the target app's tree directly. Only scan windows as
+        // fallback if rootInActiveWindow returns our own package.
+        val ownPkg = "dev.governance.android"
+        var root = service.rootInActiveWindow
 
-        // Fallback to rootInActiveWindow
-        if (root == null) {
-            root = service.rootInActiveWindow ?: return null
+        if (root != null && root.packageName?.toString() == ownPkg) {
+            // Overlay is still showing — find the app behind it
+            val skipPackages = setOf(
+                ownPkg,
+                "com.android.systemui",
+                "com.android.launcher",
+                "com.google.android.apps.nexuslauncher",
+                "com.google.android.inputmethod.latin",
+            )
+            root = try {
+                service.windows
+                    ?.sortedByDescending { it.layer }
+                    ?.mapNotNull { w -> w.root?.let { r -> r to r.packageName?.toString() } }
+                    ?.firstOrNull { (_, pkg) -> pkg != null && pkg !in skipPackages }
+                    ?.first
+            } catch (_: Exception) { null } ?: root
         }
+
+        if (root == null) return null
 
         val elements = mutableListOf<ScreenElement>()
         var index = 0

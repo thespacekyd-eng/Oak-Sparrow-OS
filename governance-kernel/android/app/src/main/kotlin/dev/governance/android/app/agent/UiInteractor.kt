@@ -197,13 +197,20 @@ object UiInteractor {
         collectScrollables(node, candidates, depth = 0)
         if (candidates.isEmpty()) return null
 
-        // Prefer vertical scroll containers over horizontal tab containers
-        val preferred = candidates.firstOrNull { n ->
+        // Exclude ViewPager (horizontal tab swiping)
+        val nonPager = candidates.filter { n ->
+            val cls = n.className?.toString() ?: ""
+            !cls.contains("ViewPager")
+        }
+        val pool = nonPager.ifEmpty { candidates }
+
+        // Prefer vertical scroll containers
+        val preferred = pool.firstOrNull { n ->
             val cls = n.className?.toString() ?: ""
             cls.contains("RecyclerView") || cls.contains("ListView") ||
                 cls.contains("ScrollView") || cls.contains("NestedScrollView")
         }
-        return preferred ?: candidates.last() // deepest scrollable as fallback
+        return preferred ?: pool.last() // deepest scrollable as fallback
     }
 
     private fun collectScrollables(
