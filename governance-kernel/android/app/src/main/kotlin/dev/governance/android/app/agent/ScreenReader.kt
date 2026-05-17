@@ -1,5 +1,6 @@
 package dev.governance.android.app.agent
 
+import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import dev.governance.android.platform.AccessibilityObservationService
 
@@ -60,10 +61,34 @@ object ScreenReader {
     /**
      * Reads the current screen and returns a structured representation.
      * Returns null if the accessibility service isn't connected.
+     *
+     * When Oak's own overlay is in the foreground, [rootInActiveWindow]
+     * returns Oak's UI tree instead of the app behind it. To fix this,
+     * we scan all windows and pick the one belonging to the target app
+     * (not our own package).
      */
     fun read(): ScreenState? {
         val service = AccessibilityObservationService.getInstance() ?: return null
-        val root = service.rootInActiveWindow ?: return null
+
+        // Try to find the target app window (not Oak, not system UI)
+        val skipPackages = setOf(
+            "dev.governance.android",
+            "com.android.systemui",
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+        )
+        var root = try {
+            service.windows
+                ?.sortedByDescending { it.layer }  // higher layer = more foreground
+                ?.mapNotNull { w -> w.root?.let { r -> r to r.packageName?.toString() } }
+                ?.firstOrNull { (_, pkg) -> pkg != null && pkg !in skipPackages }
+                ?.first
+        } catch (_: Exception) { null }
+
+        // Fallback to rootInActiveWindow
+        if (root == null) {
+            root = service.rootInActiveWindow ?: return null
+        }
 
         val elements = mutableListOf<ScreenElement>()
         var index = 0
@@ -73,6 +98,7 @@ object ScreenReader {
         } catch (_: Exception) { }
 
         val pkg = root.packageName?.toString() ?: "unknown"
+        Log.i("ScreenReader", "Read $pkg: ${elements.size} elements (${elements.count { it.isClickable }} clickable)")
         return ScreenState(pkg, elements)
     }
 
