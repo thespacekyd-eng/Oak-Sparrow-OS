@@ -69,16 +69,54 @@ class VoiceController(
         // Pre-initialize TTS eagerly to eliminate first-speak latency
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.getDefault()
-                tts?.setSpeechRate(1.05f)
-                tts?.setPitch(0.95f)
+                tts?.language = Locale.US
+                // Select a natural-sounding voice if available
+                selectBestVoice(tts!!)
+                tts?.setSpeechRate(1.0f)
+                tts?.setPitch(1.0f)
                 tts?.setOnUtteranceProgressListener(progressListener)
                 ttsReady = true
-                Log.i(TAG, "TTS pre-initialized successfully")
+                Log.i(TAG, "TTS pre-initialized successfully, voice: ${tts?.voice?.name}")
             } else {
                 Log.e(TAG, "TTS pre-init failed, will retry on first speak")
                 tts = null
             }
+        }
+    }
+
+    /**
+     * Picks the most natural-sounding voice available on the device.
+     * Prefers voices with "network" or "natural" quality, en-US locale,
+     * and female voices (typically warmer for assistant use).
+     */
+    private fun selectBestVoice(engine: TextToSpeech) {
+        try {
+            val voices = engine.voices ?: return
+            val enVoices = voices.filter {
+                it.locale.language == "en" && !it.isNetworkConnectionRequired
+            }
+            if (enVoices.isEmpty()) return
+
+            // Prefer voices with higher quality (lower features set = simpler = often better)
+            // Look for voices with "natural", "premium", or "enhanced" in the name
+            val preferred = enVoices.sortedWith(
+                compareByDescending<android.speech.tts.Voice> { v ->
+                    val name = v.name.lowercase()
+                    when {
+                        name.contains("natural") -> 4
+                        name.contains("premium") -> 3
+                        name.contains("enhanced") -> 2
+                        name.contains("female") || name.contains("woman") -> 1
+                        else -> 0
+                    }
+                }.thenBy { it.quality } // higher quality = better
+            )
+
+            val best = preferred.firstOrNull() ?: return
+            engine.voice = best
+            Log.i(TAG, "Selected voice: ${best.name} (quality=${best.quality}, locale=${best.locale})")
+        } catch (e: Exception) {
+            Log.w(TAG, "Voice selection failed, using default: ${e.message}")
         }
     }
     /** Tracks whether we tried the on-device recognizer and it failed. */

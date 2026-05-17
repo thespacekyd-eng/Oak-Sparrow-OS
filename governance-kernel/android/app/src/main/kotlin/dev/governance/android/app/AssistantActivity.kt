@@ -162,15 +162,10 @@ private fun AssistantVoiceChat(
         onDispose { voiceController.shutdown() }
     }
 
-    // Auto-start listening on entry
+    // Load model on entry but do NOT auto-start voice — user taps mic to start
     LaunchedEffect(Unit) {
         if (planner.isModelAvailable()) planner.loadModel()
         planner.resetConversation()
-        if (voiceController.hasMicrophonePermission()) {
-            voiceController.startListening()
-        } else {
-            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-        }
     }
 
     // Shared logic for processing an instruction (voice or typed)
@@ -213,7 +208,18 @@ private fun AssistantVoiceChat(
             }
             conversationHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, text))
             isProcessing = false
-            voiceController.speak(text)
+
+            // For action plans that launch external apps, don't speak —
+            // the overlay is already hidden and TTS would bring it back.
+            val launchesApp = planResult is PlanResult.Success &&
+                planResult.plan.steps.any { it.kind in setOf(
+                    "open_app", "send_sms", "make_call", "send_email",
+                    "share_to_social_app", "open_url", "search_web",
+                    "get_directions", "take_photo", "play_music", "ui_interact",
+                ) }
+            if (!launchesApp) {
+                voiceController.speak(text)
+            }
         }
     }
 
@@ -228,15 +234,8 @@ private fun AssistantVoiceChat(
         }
     }
 
-    // After TTS finishes, auto-listen for next turn (but not while processing)
-    LaunchedEffect(voiceState, isProcessing) {
-        if (voiceState is VoiceState.Idle && conversationHistory.isNotEmpty() && !isProcessing) {
-            delay(500)
-            if (voiceController.hasMicrophonePermission() && !isProcessing) {
-                voiceController.startListening()
-            }
-        }
-    }
+    // Voice mode is manual — user taps mic to start/stop.
+    // No auto-listen after TTS finishes.
 
     VoiceChatScreen(
         voiceState = voiceState,

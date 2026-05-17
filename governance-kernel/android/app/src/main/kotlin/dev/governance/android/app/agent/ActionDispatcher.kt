@@ -73,8 +73,16 @@ class ActionDispatcher(
             dispatchByKind(step)
         }
 
-    private suspend fun dispatchByKind(step: PlannedStep): DispatchResult =
-        when (step.kind) {
+    private suspend fun dispatchByKind(step: PlannedStep): DispatchResult {
+        // Hide the assistant overlay for actions that launch external apps,
+        // so the target app is visible and usable.
+        val launchesApp = step.kind in setOf(
+            "open_app", "send_sms", "make_call", "send_email", "share_to_social_app",
+            "open_url", "search_web", "get_directions", "take_photo", "play_music",
+        )
+        if (launchesApp) AssistantActivity.hideOverlay()
+
+        return when (step.kind) {
             "read_calendar" -> dispatchReadCalendar()
             "send_email" -> dispatchSendEmail(step.target ?: "", step.message)
             "share_to_social_app" -> dispatchShareToSocial(step.target ?: "")
@@ -100,6 +108,7 @@ class ActionDispatcher(
                 "Action '${step.kind}' isn't yet supported. The agent will skip it."
             )
         }
+    }
 
     private suspend fun dispatchReadCalendar(): DispatchResult {
         try {
