@@ -50,7 +50,13 @@ class AssistantActivity : ComponentActivity() {
         private var currentInstance: AssistantActivity? = null
 
         fun hideOverlay() {
-            currentInstance?.moveTaskToBack(true)
+            val instance = currentInstance
+            if (instance != null) {
+                android.util.Log.i("AssistantActivity", "hideOverlay: moving task to back")
+                instance.moveTaskToBack(true)
+            } else {
+                android.util.Log.w("AssistantActivity", "hideOverlay: no current instance!")
+            }
         }
 
         fun showOverlay() {
