@@ -20,7 +20,7 @@ include(":testing")
 include(":plan-governance")
 include(":perception")
 include(":plan-metrics")
-
+include(":anomaly")
 // Phase 2A — Android service infrastructure
 include(":android-platform")
 project(":android-platform").projectDir = file("android/platform")
