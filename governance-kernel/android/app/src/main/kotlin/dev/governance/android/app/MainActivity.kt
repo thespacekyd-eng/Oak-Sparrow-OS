@@ -8,39 +8,39 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.lifecycleScope
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.collectAsState
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import dev.governance.android.app.agent.*
 import dev.governance.android.app.ui.PreviewKernelState
 import dev.governance.android.app.ui.screens.*
+import dev.governance.android.app.ui.theme.OakPalette
 import dev.governance.android.app.ui.theme.OakSparrowTheme
 import dev.governance.android.app.voice.VoiceController
 import dev.governance.android.app.voice.VoiceState
 import dev.governance.core.GovernanceSnapshot
 import kotlinx.coroutines.launch
 
-/**
- * Single Activity hosting Compose Navigation with routes:
- * /home, /decisions, /permissions, /technical, /chat.
- *
- * Binds to [GovernanceKernelService] in onStart, exposes snapshot
- * via Compose state.
- */
 class MainActivity : ComponentActivity() {
 
     private var kernelInterface: AgentKernelInterface? = null
@@ -101,7 +101,8 @@ private fun MainNavigation(
     context: android.content.Context,
 ) {
     val navController = rememberNavController()
-    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
     // Chat state
     val messages = remember { mutableStateListOf<ChatMessage>() }
@@ -112,11 +113,7 @@ private fun MainNavigation(
     var llmMode by remember { mutableStateOf(LlmPreference.getLlmMode(context)) }
     val hasCloudKey = BuildConfig.CLOUD_API_KEY.isNotBlank()
 
-    // Hybrid wiring: Cloud LLM (Claude) for reasoning quality + on-device
-    // llama.cpp for offline fallback. Cloud calls are PII-stripped by
-    // PiiSanitizer before leaving the device. The keyword router runs
-    // first (negative latency) — cloud is only hit for complex requests.
-    // If no API key is configured, falls through to on-device only.
+    // LLM wiring
     val cloudEnabled = hasCloudKey && llmMode != LlmMode.ON_DEVICE
     val planner = remember(llmMode) {
         val cloud = CloudLlmEngine(
@@ -124,384 +121,366 @@ private fun MainNavigation(
             model = BuildConfig.CLOUD_MODEL,
         )
         val local = LlamaCppLlmEngine(context)
-        val hybrid = HybridLlmEngine(
-            cloud = cloud,
-            local = local,
-            cloudEnabled = cloudEnabled,
-        )
-        val conversation = if (cloudEnabled) ConversationEngine(
-            apiKey = BuildConfig.CLOUD_API_KEY,
-        ) else null
+        val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
+        val conversation = if (cloudEnabled) ConversationEngine(apiKey = BuildConfig.CLOUD_API_KEY) else null
         Planner(hybrid, conversationEngine = conversation)
     }
     val dispatcher = remember {
-        val cloud = CloudLlmEngine(
-            apiKey = BuildConfig.CLOUD_API_KEY,
-            model = BuildConfig.CLOUD_MODEL,
-        )
+        val cloud = CloudLlmEngine(apiKey = BuildConfig.CLOUD_API_KEY, model = BuildConfig.CLOUD_MODEL)
         ActionDispatcher(context, agentLoopEngine = cloud)
     }
     val speculationLog = remember { SpeculationLog() }
-    val scope = rememberCoroutineScope()
+
+    // Voice
+    val voiceController = remember { VoiceController(context) { transcript -> chatInput = transcript } }
+    val voiceState = voiceController.state.collectAsState().value
+    val voiceAvailable = remember { voiceController.isRecognitionAvailable() }
+    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) voiceController.startListening() }
+    DisposableEffect(Unit) { onDispose { voiceController.shutdown() } }
+
+    val buildMode = remember { BuildModeDetector.detect(context) }
 
     // Voice chat state
     val voiceChatHistory = remember { mutableStateListOf<VoiceTurn>() }
 
-    // Voice loop. Mic + TTS, both on-device. Constructed lazily — no
-    // I/O at construction. The onTranscript callback drops the
-    // recognized text into the chat input and auto-sends, so a voice
-    // utterance follows the exact same Planner -> Kernel -> Dispatcher
-    // path as a typed message: kernel still gates every action.
-    val voiceController = remember {
-        VoiceController(context) { transcript ->
-            chatInput = transcript
-        }
-    }
-    val voiceState = voiceController.state.collectAsState().value
-    val voiceAvailable = remember { voiceController.isRecognitionAvailable() }
+    // Send instruction handler
+    val sendInstruction: (String) -> Unit = remember(kernelInterface) {
+        { rawInstruction: String ->
+            val instruction = rawInstruction.trim()
+            if (instruction.isNotBlank() && !isProcessing) {
+                chatInput = ""
+                messages.add(ChatMessage(id = "user-${System.nanoTime()}", role = ChatRole.USER, text = instruction))
 
-    // RECORD_AUDIO runtime permission — must be requested before the
-    // first mic tap. This is a one-time grant per install.
-    val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) voiceController.startListening()
-    }
-    DisposableEffect(Unit) {
-        onDispose { voiceController.shutdown() }
-    }
-
-    // Detected once per Activity lifecycle. The mode can't change at
-    // runtime — it's determined by where the APK was installed.
-    val buildMode = remember { BuildModeDetector.detect(context) }
-
-    data class NavItem(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector)
-    val items = listOf(
-        NavItem("home", R.string.nav_home, Icons.Filled.Home),
-        NavItem("decisions", R.string.nav_decisions, Icons.AutoMirrored.Filled.List),
-        NavItem("permissions", R.string.nav_permissions, Icons.Filled.Star),
-        NavItem("technical", R.string.nav_technical, Icons.Filled.Settings),
-    )
-
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text(stringResource(R.string.app_name)) })
-        },
-        bottomBar = {
-            if (currentRoute != "chat" && currentRoute != "voice-chat" && currentRoute != "settings") {
-                NavigationBar {
-                    items.forEach { item ->
-                        NavigationBarItem(
-                            selected = currentRoute == item.route,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo("home") { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(item.icon, contentDescription = null) },
-                            label = { Text(stringResource(item.labelRes)) },
-                        )
-                    }
-                }
-            }
-        },
-    ) { padding ->
-        NavHost(navController, startDestination = "home", modifier = Modifier.padding(padding)) {
-            composable("home") {
-                HomeScreen(
-                    snapshot = snapshot,
-                    recentDecisions = PreviewKernelState.recentDecisions,
-                    observationCount = PreviewKernelState.systemEvents.size,
-                    errorCount = 0,
-                    onDecisionTap = { navController.navigate("decisions") },
-                    onSeeDetails = { navController.navigate("technical") },
-                    onChatTap = { navController.navigate("chat") },
-                    onVoiceChatTap = { navController.navigate("voice-chat") },
-                    onSettingsTap = { navController.navigate("settings") },
-                    buildMode = buildMode,
-                )
-            }
-            composable("decisions") {
-                RecentDecisionsScreen(records = PreviewKernelState.auditRecords)
-            }
-            composable("permissions") {
-                val apps = remember {
-                    mutableStateListOf(
-                        AppCapability("com.google.android.gm", "Gmail"),
-                        AppCapability("com.instagram.android", "Instagram"),
-                    )
-                }
-                AppPermissionsScreen(
-                    apps = apps,
-                    onUpdate = { updated ->
-                        val idx = apps.indexOfFirst { it.packageName == updated.packageName }
-                        if (idx >= 0) apps[idx] = updated
-                    },
-                )
-            }
-            composable("technical") {
-                TechnicalDetailScreen(
-                    snapshot = snapshot,
-                    records = PreviewKernelState.auditRecords,
-                    systemEvents = PreviewKernelState.systemEvents.map { it.event },
-                    chainVerified = true,
-                    chainProblemTime = null,
-                    buildMode = buildMode,
-                )
-            }
-            composable("chat") {
-                // Eagerly load the LLM on first chat-surface entry so the
-                // user doesn't wait through cold-load on their first message.
-                // Posts a single SYSTEM message reporting the load state —
-                // makes it visible in-app whether the LLM is actually
-                // running vs whether the planner is on the keyword fallback.
-                // PHASE-A-TESTABILITY: this is the single visible signal that
-                // the on-device LLM swap landed correctly.
-                LaunchedEffect(Unit) {
-                    if (messages.none { it.id == "llm-status" }) {
-                        val statusText = when {
-                            !planner.isModelAvailable() ->
-                                "Model file not present. Run android/setup-model.sh, " +
-                                "then re-open the chat. Falling back to keyword router."
-                            else -> {
-                                val loadResult = planner.loadModel()
-                                if (loadResult != null) {
-                                    loadResult
-                                } else if (BuildConfig.CLOUD_API_KEY.isNotBlank()) {
-                                    "Hybrid mode: Cloud LLM (${BuildConfig.CLOUD_MODEL}) + " +
-                                    "on-device fallback (${BuildConfig.MODEL_NAME}). " +
-                                    "PII stripped before cloud egress."
-                                } else {
-                                    "On-device LLM ready (${BuildConfig.MODEL_NAME})."
-                                }
-                            }
-                        }
-                        messages.add(ChatMessage(
-                            id = "llm-status",
-                            role = ChatRole.SYSTEM,
-                            text = statusText,
-                        ))
-                    }
-                }
-                // The instruction-dispatch path. Lifted to a lambda so both
-                // the manual Send tap and the voice "transcript landed"
-                // LaunchedEffect can invoke it. Every voice utterance and
-                // every typed message takes this exact path through the
-                // kernel — voice doesn't bypass governance.
-                val sendInstruction: (String) -> Unit = { rawInstruction ->
-                    val instruction = rawInstruction.trim()
-                    if (instruction.isNotBlank() && !isProcessing) {
-                        chatInput = ""
-                        val userMsg = ChatMessage(
-                            id = "user-${System.nanoTime()}",
-                            role = ChatRole.USER,
-                            text = instruction,
-                        )
-                        messages.add(userMsg)
-
-                        val ki = kernelInterface
-                        if (ki == null) {
-                            messages.add(ChatMessage(
-                                id = "err-${System.nanoTime()}",
-                                role = ChatRole.SYSTEM,
-                                text = "Not connected to governance service.",
-                            ))
-                        } else {
-                            scope.launch {
-                                isProcessing = true
-                                if (planner.isModelAvailable()) planner.loadModel()
-                                val orchestrator = SpeculativeOrchestrator(
-                                    context, planner, ki, dispatcher, speculationLog,
-                                )
-                                val (planResult, log, _) = orchestrator.execute(instruction)
-                                val responseText: String = when (planResult) {
-                                    is PlanResult.Success -> {
-                                        messages.add(ChatMessage(
-                                            id = "plan-${System.nanoTime()}",
-                                            role = ChatRole.AGENT,
-                                            text = planResult.plan.summary,
-                                            plan = planResult.plan,
-                                            executionLog = log,
-                                        ))
-                                        planResult.plan.summary
-                                    }
-                                    is PlanResult.Conversational -> {
-                                        messages.add(ChatMessage(
-                                            id = "chat-${System.nanoTime()}",
-                                            role = ChatRole.AGENT,
-                                            text = planResult.message,
-                                        ))
-                                        planResult.message
-                                    }
-                                    is PlanResult.Error -> {
-                                        messages.add(ChatMessage(
-                                            id = "err-${System.nanoTime()}",
-                                            role = ChatRole.AGENT,
-                                            text = planResult.message,
-                                        ))
-                                        planResult.message
-                                    }
-                                }
-                                isProcessing = false
-                                // Speak the response if voice is active. Skip
-                                // for typed messages to avoid surprising the user.
-                                if (voiceAvailable &&
-                                    (voiceState is VoiceState.Heard ||
-                                     voiceState is VoiceState.Speaking)) {
-                                    voiceController.speak(responseText)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Auto-send when voice recognition lands a transcript.
-                // VoiceController's onTranscript callback already dropped
-                // the text into chatInput; this fires the same path the
-                // mic/Send button would.
-                LaunchedEffect(voiceState) {
-                    if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
-                        sendInstruction(chatInput)
-                    }
-                }
-                ChatScreen(
-                    messages = messages,
-                    isProcessing = isProcessing,
-                    modelAvailable = planner.isModelAvailable(),
-                    inputText = chatInput,
-                    onInputChange = { chatInput = it },
-                    voiceState = voiceState,
-                    voiceAvailable = voiceAvailable,
-                    onMicTap = {
-                        // Cancel mid-listen if user taps again
-                        if (voiceState is VoiceState.Listening) {
-                            voiceController.cancelListening()
-                            return@ChatScreen
-                        }
-                        // Stop TTS before listening (avoid talking over user)
-                        if (voiceState is VoiceState.Speaking) {
-                            voiceController.stopSpeaking()
-                        }
-                        // Permission gate
-                        if (voiceController.hasMicrophonePermission()) {
-                            voiceController.startListening()
-                        } else {
-                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                        }
-                    },
-                    onSend = { sendInstruction(chatInput) },
-                )
-            }
-            composable("voice-chat") {
-                // Load model eagerly for voice chat
-                LaunchedEffect(Unit) {
-                    if (planner.isModelAvailable()) planner.loadModel()
-                    planner.resetConversation()
-                }
-
-                VoiceChatScreen(
-                    voiceState = voiceState,
-                    conversationHistory = voiceChatHistory,
-                    onMicTap = {
-                        if (voiceState is VoiceState.Listening) {
-                            voiceController.cancelListening()
-                            return@VoiceChatScreen
-                        }
-                        if (voiceState is VoiceState.Speaking) {
-                            voiceController.stopSpeaking()
-                        }
-                        if (voiceController.hasMicrophonePermission()) {
-                            voiceController.startListening()
-                        } else {
-                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                        }
-                    },
-                    onTextSend = { text ->
-                        if (!isProcessing) {
-                            voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, text))
-                            val ki = kernelInterface
-                            if (ki == null) {
-                                val msg = "Not connected to governance service."
-                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
-                                voiceController.speak(msg)
-                                return@VoiceChatScreen
-                            }
-                            scope.launch {
-                                isProcessing = true
-                                if (planner.isModelAvailable()) planner.loadModel()
-                                val orchestrator = SpeculativeOrchestrator(
-                                    context, planner, ki, dispatcher, speculationLog,
-                                )
-                                val (planResult, _, _) = orchestrator.execute(text)
-                                val responseText: String = when (planResult) {
-                                    is PlanResult.Success -> planResult.plan.summary
-                                    is PlanResult.Conversational -> planResult.message
-                                    is PlanResult.Error -> planResult.message
-                                }
-                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, responseText))
-                                isProcessing = false
-                                voiceController.speak(responseText)
-                            }
-                        }
-                    },
-                    onClose = { navController.popBackStack() },
-                )
-
-                // Voice chat instruction handler
-                LaunchedEffect(voiceState) {
-                    if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
-                        val instruction = chatInput.trim()
-                        chatInput = ""
-                        voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
-
-                        val ki = kernelInterface
-                        if (ki == null) {
-                            val msg = "Not connected to governance service."
-                            voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, msg))
-                            voiceController.speak(msg)
-                            return@LaunchedEffect
-                        }
-
+                val ki = kernelInterface
+                if (ki == null) {
+                    messages.add(ChatMessage(id = "err-${System.nanoTime()}", role = ChatRole.SYSTEM, text = "Not connected to governance service."))
+                } else {
+                    scope.launch {
                         isProcessing = true
                         if (planner.isModelAvailable()) planner.loadModel()
-                        val orchestrator = SpeculativeOrchestrator(
-                            context, planner, ki, dispatcher, speculationLog,
-                        )
-                        val (planResult, _, _) = orchestrator.execute(instruction)
-                        val text: String = when (planResult) {
-                            is PlanResult.Success -> planResult.plan.summary
-                            is PlanResult.Conversational -> planResult.message
-                            is PlanResult.Error -> planResult.message
+                        val orchestrator = SpeculativeOrchestrator(context, planner, ki, dispatcher, speculationLog)
+                        val (planResult, log, _) = orchestrator.execute(instruction)
+                        when (planResult) {
+                            is PlanResult.Success -> messages.add(ChatMessage(
+                                id = "plan-${System.nanoTime()}", role = ChatRole.AGENT,
+                                text = planResult.plan.summary, plan = planResult.plan, executionLog = log,
+                            ))
+                            is PlanResult.Conversational -> messages.add(ChatMessage(
+                                id = "chat-${System.nanoTime()}", role = ChatRole.AGENT, text = planResult.message,
+                            ))
+                            is PlanResult.Error -> messages.add(ChatMessage(
+                                id = "err-${System.nanoTime()}", role = ChatRole.AGENT, text = planResult.message,
+                            ))
                         }
-                        voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, text))
                         isProcessing = false
-
-                        voiceController.speak(text)
                     }
                 }
-
-                // After device TTS finishes, auto-listen for next turn
-                LaunchedEffect(voiceState) {
-                    if (voiceState is VoiceState.Idle && voiceChatHistory.isNotEmpty()) {
-                        kotlinx.coroutines.delay(300)
-                        if (voiceController.hasMicrophonePermission()) {
-                            voiceController.startListening()
-                        }
-                    }
-                }
-            }
-            composable("settings") {
-                SettingsScreen(
-                    llmMode = llmMode,
-                    onLlmModeChange = { mode ->
-                        llmMode = mode
-                        LlmPreference.setLlmMode(context, mode)
-                    },
-                    hasCloudKey = hasCloudKey,
-                )
             }
         }
+    }
+
+    // Sidebar drawer + chat-first layout
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = OakPalette.DrawerBackground,
+                modifier = Modifier.width(300.dp),
+            ) {
+                DrawerContent(
+                    onNewChat = {
+                        messages.clear()
+                        scope.launch { drawerState.close() }
+                        navController.navigate("chat") {
+                            popUpTo("chat") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onVoiceChat = {
+                        scope.launch { drawerState.close() }
+                        navController.navigate("voice-chat") {
+                            launchSingleTop = true
+                        }
+                    },
+                    onGovernance = {
+                        scope.launch { drawerState.close() }
+                        navController.navigate("governance") { launchSingleTop = true }
+                    },
+                    onSettings = {
+                        scope.launch { drawerState.close() }
+                        navController.navigate("settings") { launchSingleTop = true }
+                    },
+                )
+            }
+        },
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "Oak",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Menu", tint = OakPalette.TextSecondary)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = OakPalette.Background,
+                        titleContentColor = OakPalette.TextPrimary,
+                    ),
+                )
+            },
+            containerColor = OakPalette.Background,
+        ) { padding ->
+            NavHost(
+                navController,
+                startDestination = "chat",
+                modifier = Modifier.padding(padding),
+            ) {
+                composable("chat") {
+                    LaunchedEffect(Unit) {
+                        if (planner.isModelAvailable()) planner.loadModel()
+                    }
+                    LaunchedEffect(voiceState) {
+                        if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
+                            sendInstruction(chatInput)
+                        }
+                    }
+                    ChatScreen(
+                        messages = messages,
+                        isProcessing = isProcessing,
+                        modelAvailable = planner.isModelAvailable(),
+                        inputText = chatInput,
+                        onInputChange = { chatInput = it },
+                        voiceState = voiceState,
+                        voiceAvailable = voiceAvailable,
+                        onMicTap = {
+                            if (voiceState is VoiceState.Listening) { voiceController.cancelListening(); return@ChatScreen }
+                            if (voiceState is VoiceState.Speaking) voiceController.stopSpeaking()
+                            if (voiceController.hasMicrophonePermission()) voiceController.startListening()
+                            else micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        },
+                        onSend = { sendInstruction(chatInput) },
+                        onSuggestionTap = { sendInstruction(it) },
+                    )
+                }
+                composable("voice-chat") {
+                    LaunchedEffect(Unit) {
+                        if (planner.isModelAvailable()) planner.loadModel()
+                        planner.resetConversation()
+                    }
+                    VoiceChatScreen(
+                        voiceState = voiceState,
+                        conversationHistory = voiceChatHistory,
+                        onMicTap = {
+                            if (voiceState is VoiceState.Listening) { voiceController.cancelListening(); return@VoiceChatScreen }
+                            if (voiceState is VoiceState.Speaking) voiceController.stopSpeaking()
+                            if (voiceController.hasMicrophonePermission()) voiceController.startListening()
+                            else micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        },
+                        onTextSend = { text ->
+                            if (!isProcessing) {
+                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, text))
+                                val ki = kernelInterface ?: run {
+                                    voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, "Not connected to governance service."))
+                                    return@VoiceChatScreen
+                                }
+                                scope.launch {
+                                    isProcessing = true
+                                    if (planner.isModelAvailable()) planner.loadModel()
+                                    val orchestrator = SpeculativeOrchestrator(context, planner, ki, dispatcher, speculationLog)
+                                    val (planResult, _, _) = orchestrator.execute(text)
+                                    val resp = when (planResult) {
+                                        is PlanResult.Success -> planResult.plan.summary
+                                        is PlanResult.Conversational -> planResult.message
+                                        is PlanResult.Error -> planResult.message
+                                    }
+                                    voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, resp))
+                                    isProcessing = false
+                                    voiceController.speak(resp)
+                                }
+                            }
+                        },
+                        onClose = { navController.popBackStack() },
+                    )
+                    LaunchedEffect(voiceState) {
+                        if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
+                            val instruction = chatInput.trim()
+                            chatInput = ""
+                            voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
+                            val ki = kernelInterface ?: return@LaunchedEffect
+                            isProcessing = true
+                            if (planner.isModelAvailable()) planner.loadModel()
+                            val orchestrator = SpeculativeOrchestrator(context, planner, ki, dispatcher, speculationLog)
+                            val (planResult, _, _) = orchestrator.execute(instruction)
+                            val resp = when (planResult) {
+                                is PlanResult.Success -> planResult.plan.summary
+                                is PlanResult.Conversational -> planResult.message
+                                is PlanResult.Error -> planResult.message
+                            }
+                            voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, resp))
+                            isProcessing = false
+                            voiceController.speak(resp)
+                        }
+                    }
+                }
+                composable("governance") {
+                    HomeScreen(
+                        snapshot = snapshot,
+                        recentDecisions = PreviewKernelState.recentDecisions,
+                        observationCount = PreviewKernelState.systemEvents.size,
+                        errorCount = 0,
+                        onDecisionTap = { navController.navigate("decisions") },
+                        onSeeDetails = { navController.navigate("technical") },
+                        onChatTap = { navController.navigate("chat") },
+                        onVoiceChatTap = { navController.navigate("voice-chat") },
+                        onSettingsTap = { navController.navigate("settings") },
+                        buildMode = buildMode,
+                    )
+                }
+                composable("decisions") {
+                    RecentDecisionsScreen(records = PreviewKernelState.auditRecords)
+                }
+                composable("permissions") {
+                    val apps = remember {
+                        mutableStateListOf(
+                            AppCapability("com.google.android.gm", "Gmail"),
+                            AppCapability("com.instagram.android", "Instagram"),
+                        )
+                    }
+                    AppPermissionsScreen(
+                        apps = apps,
+                        onUpdate = { updated ->
+                            val idx = apps.indexOfFirst { it.packageName == updated.packageName }
+                            if (idx >= 0) apps[idx] = updated
+                        },
+                    )
+                }
+                composable("technical") {
+                    TechnicalDetailScreen(
+                        snapshot = snapshot,
+                        records = PreviewKernelState.auditRecords,
+                        systemEvents = PreviewKernelState.systemEvents.map { it.event },
+                        chainVerified = true,
+                        chainProblemTime = null,
+                        buildMode = buildMode,
+                    )
+                }
+                composable("settings") {
+                    SettingsScreen(
+                        llmMode = llmMode,
+                        onLlmModeChange = { mode ->
+                            llmMode = mode
+                            LlmPreference.setLlmMode(context, mode)
+                        },
+                        hasCloudKey = hasCloudKey,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrawerContent(
+    onNewChat: () -> Unit,
+    onVoiceChat: () -> Unit,
+    onGovernance: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .padding(vertical = 16.dp),
+    ) {
+        // Header
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(36.dp),
+                shape = CircleShape,
+                color = OakPalette.PrimaryContainer,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Park, null, Modifier.size(18.dp), tint = OakPalette.Primary)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Oak & Sparrow",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = OakPalette.TextPrimary,
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // New Chat button
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .clickable(onClick = onNewChat),
+            shape = RoundedCornerShape(12.dp),
+            color = OakPalette.SurfaceVariant,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Add, null, Modifier.size(20.dp), tint = OakPalette.TextPrimary)
+                Spacer(Modifier.width(12.dp))
+                Text("New chat", style = MaterialTheme.typography.bodyMedium, color = OakPalette.TextPrimary)
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = OakPalette.Outline, modifier = Modifier.padding(horizontal = 20.dp))
+        Spacer(Modifier.height(16.dp))
+
+        // Navigation items
+        DrawerItem(icon = Icons.AutoMirrored.Filled.Chat, label = "Chat", onClick = onNewChat)
+        DrawerItem(icon = Icons.Filled.Mic, label = "Voice mode", onClick = onVoiceChat)
+        DrawerItem(icon = Icons.Filled.Shield, label = "Governance", onClick = onGovernance)
+        DrawerItem(icon = Icons.Filled.Settings, label = "Settings", onClick = onSettings)
+
+        Spacer(Modifier.weight(1f))
+
+        // Footer
+        Text(
+            "Oak & Sparrow OS",
+            style = MaterialTheme.typography.labelSmall,
+            color = OakPalette.TextTertiary,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun DrawerItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, Modifier.size(20.dp), tint = OakPalette.TextSecondary)
+        Spacer(Modifier.width(16.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = OakPalette.TextSecondary)
     }
 }
