@@ -175,8 +175,12 @@ private fun AssistantVoiceChat(
 
     // Shared logic for processing an instruction (voice or typed)
     fun processInstruction(instruction: String) {
-        val exitPhrases = listOf("bye", "goodbye", "close", "done", "exit", "stop", "never mind")
-        if (exitPhrases.any { instruction.lowercase() == it }) {
+        val lower = instruction.lowercase().trim()
+        val exitWords = listOf("bye", "goodbye", "close", "done", "exit", "stop", "never mind", "quit")
+        // Match if the entire input is an exit phrase, or contains one as the main intent
+        val isExit = exitWords.any { lower == it || lower == "ok $it" || lower == "okay $it" ||
+            lower == "$it $it" || lower.startsWith("i'm $it") || lower.startsWith("im $it") }
+        if (isExit) {
             scope.launch {
                 voiceController.speak("See you later!")
                 delay(1200)
@@ -218,15 +222,17 @@ private fun AssistantVoiceChat(
         if (voiceState is VoiceState.Heard && chatInput.value.isNotBlank() && !isProcessing) {
             val instruction = chatInput.value.trim()
             chatInput.value = ""
+            // Stop listening while we process
+            voiceController.cancelListening()
             processInstruction(instruction)
         }
     }
 
-    // After TTS finishes, auto-listen for next turn
-    LaunchedEffect(voiceState) {
-        if (voiceState is VoiceState.Idle && conversationHistory.isNotEmpty()) {
-            delay(300)
-            if (voiceController.hasMicrophonePermission()) {
+    // After TTS finishes, auto-listen for next turn (but not while processing)
+    LaunchedEffect(voiceState, isProcessing) {
+        if (voiceState is VoiceState.Idle && conversationHistory.isNotEmpty() && !isProcessing) {
+            delay(500)
+            if (voiceController.hasMicrophonePermission() && !isProcessing) {
                 voiceController.startListening()
             }
         }
