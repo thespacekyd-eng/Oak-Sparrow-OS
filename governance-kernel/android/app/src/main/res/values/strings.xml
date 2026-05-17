@@ -104,7 +104,7 @@
     <string name="onboarding_title_3">Notifications</string>
     <string name="onboarding_body_3">Allow notifications so Oak can tell you when an action needs your approval, or show you what it\'s working on.</string>
     <string name="onboarding_title_4">Default Assistant</string>
-    <string name="onboarding_body_4">Make Oak your default assistant so you can launch it anytime by long-pressing the home button — just like Google Assistant or Bixby.</string>
+    <string name="onboarding_body_4">Make Oak your default assistant so you can launch it anytime by long-pressing the home button.\n\nIf a picker appears, select \"Oak &amp; Sparrow\". If it opens Settings instead:\n\n1. Tap \"Digital assistant app\"\n2. Select \"Oak &amp; Sparrow\"\n3. Come back to this app</string>
     <string name="onboarding_title_5">Display Over Apps</string>
     <string name="onboarding_body_5">Allow Oak to show its voice overlay on top of other apps. This lets you talk to Oak while using any app — just long-press home to bring it up.</string>
     <string name="btn_next">Next</string>
