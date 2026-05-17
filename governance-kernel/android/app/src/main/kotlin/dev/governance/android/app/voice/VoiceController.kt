@@ -199,6 +199,8 @@ class VoiceController(
 
         // Use Kokoro neural TTS if available — much more natural voice
         if (useOakTts) {
+            // Stop any in-progress speech first
+            oakTts.stop()
             transition(VoiceState.Event.SpeakStart(text))
             ttsScope.launch {
                 oakTts.speak(text)
