@@ -20,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,7 @@ fun ChatScreen(
     voiceAvailable: Boolean = false,
     onMicTap: () -> Unit = {},
     onSuggestionTap: (String) -> Unit = {},
+    onSpeak: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
 
@@ -77,7 +80,7 @@ fun ChatScreen(
             items(messages, key = { it.id }) { message ->
                 when (message.role) {
                     ChatRole.USER -> UserBubble(message.text)
-                    ChatRole.AGENT -> AgentBubble(message)
+                    ChatRole.AGENT -> AgentBubble(message, onSpeak = onSpeak)
                     ChatRole.SYSTEM -> SystemBubble(message.text)
                 }
             }
@@ -263,7 +266,10 @@ private fun SystemBubble(text: String) {
 }
 
 @Composable
-private fun AgentBubble(message: ChatMessage) {
+private fun AgentBubble(message: ChatMessage, onSpeak: (String) -> Unit = {}) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -305,6 +311,38 @@ private fun AgentBubble(message: ChatMessage) {
                         StepRow(i + 1, step, state, tier)
                     }
                 }
+            }
+        }
+
+        // Read aloud + Copy buttons
+        Row(
+            modifier = Modifier.padding(start = 4.dp, top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            IconButton(
+                onClick = { onSpeak(message.text) },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    Icons.Filled.VolumeUp,
+                    contentDescription = "Read aloud",
+                    modifier = Modifier.size(16.dp),
+                    tint = OakPalette.TextTertiary,
+                )
+            }
+            IconButton(
+                onClick = {
+                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.text))
+                    android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    Icons.Filled.ContentCopy,
+                    contentDescription = "Copy",
+                    modifier = Modifier.size(16.dp),
+                    tint = OakPalette.TextTertiary,
+                )
             }
         }
     }

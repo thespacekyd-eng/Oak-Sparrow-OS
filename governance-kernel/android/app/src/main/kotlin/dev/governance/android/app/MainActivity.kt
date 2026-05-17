@@ -311,6 +311,7 @@ private fun MainNavigation(
                         },
                         onSend = { sendInstruction(chatInput) },
                         onSuggestionTap = { sendInstruction(it) },
+                        onSpeak = { text -> voiceController.speak(text) },
                     )
                 }
                 composable("voice-chat") {

@@ -104,13 +104,27 @@ fun OnboardingScreen(
                     body = stringResource(R.string.onboarding_body_4),
                     buttonText = stringResource(R.string.btn_set_assistant),
                     onAction = {
-                        if (roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
-                            !roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)
-                        ) {
-                            assistantRoleLauncher.launch(
-                                roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT)
+                        try {
+                            if (roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
+                                !roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+                            ) {
+                                assistantRoleLauncher.launch(
+                                    roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT)
+                                )
+                            } else {
+                                // Role already held or not available — open assist settings
+                                context.startActivity(
+                                    Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                                scope.launch { pagerState.animateScrollToPage(3) }
+                            }
+                        } catch (_: Exception) {
+                            // Fallback: open general assist settings
+                            context.startActivity(
+                                Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             )
-                        } else {
                             scope.launch { pagerState.animateScrollToPage(3) }
                         }
                     },

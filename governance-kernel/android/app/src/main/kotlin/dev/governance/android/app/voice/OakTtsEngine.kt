@@ -158,13 +158,15 @@ class OakTtsEngine(private val context: Context) {
                 silenceScale = 0.2f,
             )
 
-            engine.generateWithConfigAndCallback(
+            // Generate without streaming callback to avoid JNI lambda
+            // signature mismatch (NoSuchMethodError on boxed Integer).
+            val audio = engine.generateWithConfig(
                 text = clean,
                 config = genConfig,
-            ) { samples ->
-                if (!isSpeaking) return@generateWithConfigAndCallback 0
-                track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                if (isSpeaking) 1 else 0
+            )
+
+            if (isSpeaking && audio.samples.isNotEmpty()) {
+                track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
             }
 
             track.stop()
