@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:sessionService="dev.governance.android.app.voice.OakVoiceInteractionSessionService"
+    android:recognitionService="dev.governance.android.app.voice.OakRecognitionService"
     android:supportsAssist="true"
-    android:settingsActivity="dev.governance.android.app.MainActivity" />
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:settingsActivity="dev.governance.android.app.OnboardingActivity" />
