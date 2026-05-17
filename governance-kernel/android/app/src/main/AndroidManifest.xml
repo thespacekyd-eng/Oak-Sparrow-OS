@@ -188,6 +188,17 @@
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
 
+        <!-- Stub RecognitionService required by Samsung One UI to
+             consider the VoiceInteractionService "qualified". -->
+        <service
+            android:name=".voice.OakRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+        </service>
+
         <!--
             Floating mic bubble that stays on top of all apps.
             Tapping it launches AssistantActivity for voice chat.
