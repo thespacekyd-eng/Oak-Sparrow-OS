@@ -1,36 +1,64 @@
 package dev.governance.android.app.agent
 
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Simple bridge for communicating the result of
- * [AuthorizationActivity] back to the [AgentOrchestrator].
+ * Per-decision bridge for communicating authorization results from
+ * [AuthorizationActivity] back to the [SpeculativeOrchestrator].
  *
- * The orchestrator calls [awaitResult] which polls until
- * [deliverResult] is called from the activity's approve/skip
- * callback.
+ * Each HOLD decision gets its own [CompletableDeferred], keyed by
+ * audit ID. This prevents race conditions when multiple HOLD
+ * decisions are pending simultaneously.
  */
 object AuthorizationResultBridge {
-    @Volatile
-    private var result: Boolean? = null
-    @Volatile
-    private var delivered = false
+    private val pending = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
 
-    fun reset() {
-        result = null
-        delivered = false
+    // Legacy single-key support for AuthorizationActivity (which
+    // doesn't know the audit ID). Stores the most recent key so
+    // deliverResult(Boolean) still works.
+    @Volatile
+    private var activeKey: String? = null
+
+    fun create(auditId: String): CompletableDeferred<Boolean> {
+        val deferred = CompletableDeferred<Boolean>()
+        pending[auditId] = deferred
+        activeKey = auditId
+        return deferred
     }
 
     fun deliverResult(approved: Boolean) {
-        result = approved
-        delivered = true
+        val key = activeKey ?: return
+        pending.remove(key)?.complete(approved)
+        activeKey = null
     }
 
-    suspend fun awaitResult(timeoutMs: Long = 20_000): Boolean {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (!delivered && System.currentTimeMillis() < deadline) {
-            delay(200)
+    fun deliverResult(auditId: String, approved: Boolean) {
+        pending.remove(auditId)?.complete(approved)
+        if (activeKey == auditId) activeKey = null
+    }
+
+    suspend fun awaitResult(auditId: String, timeoutMs: Long = 20_000): Boolean {
+        val deferred = pending[auditId] ?: return false
+        return try {
+            kotlinx.coroutines.withTimeout(timeoutMs) {
+                deferred.await()
+            }
+        } catch (_: Exception) {
+            pending.remove(auditId)
+            false // default to skip on timeout
         }
-        return result ?: false // default to skip on timeout
+    }
+
+    // Legacy compatibility
+    fun reset() {
+        activeKey?.let { pending.remove(it)?.complete(false) }
+        activeKey = null
+    }
+
+    @Suppress("unused")
+    suspend fun awaitResult(timeoutMs: Long = 20_000): Boolean {
+        val key = activeKey ?: return false
+        return awaitResult(key, timeoutMs)
     }
 }

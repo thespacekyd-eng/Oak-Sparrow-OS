@@ -334,6 +334,15 @@ private fun AgentBubble(message: ChatMessage, onSpeak: (String) -> Unit = {}) {
                 onClick = {
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(message.text))
                     android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                    // Auto-clear clipboard after 60s for privacy
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        try {
+                            val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                                cm.clearPrimaryClip()
+                            }
+                        } catch (_: Exception) {}
+                    }, 60_000)
                 },
                 modifier = Modifier.size(28.dp),
             ) {
