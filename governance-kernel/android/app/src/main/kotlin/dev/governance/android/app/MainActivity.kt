@@ -315,52 +315,46 @@ private fun MainNavigation(
                     )
                 }
                 composable("voice-chat") {
+                    // Enable continuous conversation loop
                     LaunchedEffect(Unit) {
-                        if (planner.isModelAvailable()) planner.loadModel()
+                        voiceController.autoListenEnabled = true
                         planner.resetConversation()
                     }
+                    DisposableEffect(Unit) {
+                        onDispose { voiceController.autoListenEnabled = false }
+                    }
+
                     VoiceChatScreen(
                         voiceState = voiceState,
                         conversationHistory = voiceChatHistory,
                         onMicTap = {
                             if (voiceState is VoiceState.Listening) { voiceController.cancelListening(); return@VoiceChatScreen }
-                            if (voiceState is VoiceState.Speaking) voiceController.stopSpeaking()
+                            if (voiceState is VoiceState.Speaking) { voiceController.stopSpeaking(); return@VoiceChatScreen }
                             if (voiceController.hasMicrophonePermission()) voiceController.startListening()
                             else micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                         },
-                        onTextSend = { text ->
-                            if (!isProcessing) {
-                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, text))
-                                val ki = kernelInterface ?: run {
-                                    voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, "Not connected to governance service."))
-                                    return@VoiceChatScreen
-                                }
-                                scope.launch {
-                                    isProcessing = true
-                                    if (planner.isModelAvailable()) planner.loadModel()
-                                    val orchestrator = SpeculativeOrchestrator(context, planner, ki, dispatcher, speculationLog)
-                                    val (planResult, _, _) = orchestrator.execute(text)
-                                    val resp = when (planResult) {
-                                        is PlanResult.Success -> planResult.plan.summary
-                                        is PlanResult.Conversational -> planResult.message
-                                        is PlanResult.Error -> planResult.message
-                                    }
-                                    voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, resp))
-                                    isProcessing = false
-                                    voiceController.speak(resp)
-                                }
-                            }
+                        onTextSend = {},
+                        onClose = {
+                            voiceController.stopSpeaking()
+                            voiceController.cancelListening()
+                            navController.popBackStack()
                         },
-                        onClose = { navController.popBackStack() },
                     )
+
+                    // Process voice input when heard
                     LaunchedEffect(voiceState) {
-                        if (voiceState is VoiceState.Heard && chatInput.isNotBlank() && !isProcessing) {
-                            val instruction = chatInput.trim()
-                            chatInput = ""
+                        if (voiceState is VoiceState.Heard && !isProcessing) {
+                            val instruction = voiceState.transcript
                             voiceChatHistory.add(VoiceTurn(VoiceTurnRole.USER, instruction))
-                            val ki = kernelInterface ?: return@LaunchedEffect
                             isProcessing = true
-                            if (planner.isModelAvailable()) planner.loadModel()
+
+                            val ki = kernelInterface
+                            if (ki == null) {
+                                voiceChatHistory.add(VoiceTurn(VoiceTurnRole.ASSISTANT, "Not connected yet. Try again."))
+                                isProcessing = false
+                                return@LaunchedEffect
+                            }
+
                             val orchestrator = SpeculativeOrchestrator(context, planner, ki, dispatcher, speculationLog)
                             val (planResult, _, _) = orchestrator.execute(instruction)
                             val resp = when (planResult) {

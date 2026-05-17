@@ -18,8 +18,8 @@ import kotlinx.serialization.json.*
  */
 class ConversationEngine(
     private val apiKey: String,
-    private val model: String = "claude-opus-4-6",
-    private val maxTokens: Int = 512,
+    private val model: String = "claude-haiku-4-5-20251001",
+    private val maxTokens: Int = 300,
     var memoryBlock: String = "",
     var onRemember: ((String) -> Unit)? = null,
     var onForget: ((String) -> Unit)? = null,
