@@ -97,21 +97,21 @@
     <string name="verification_failure_diagnose">Diagnose</string>
 
     <!-- Onboarding -->
-    <string name="onboarding_title_1">Agent governance</string>
-    <string name="onboarding_body_1">Oak &amp; Sparrow reviews every action an AI agent proposes on your behalf before it executes. Actions are scored, and risky ones are held for your review.</string>
-    <string name="onboarding_title_2">Accessibility access</string>
-    <string name="onboarding_body_2">To verify that agent actions actually completed as reported, we need accessibility service access. This lets us confirm outcomes without trusting the agent\'s self-reports.</string>
+    <string name="onboarding_title_1">Meet Oak</string>
+    <string name="onboarding_body_1">Oak is your private AI assistant that can control your phone — open apps, send texts, like posts, set alarms, and more.\n\nEvery action is governed by a trust kernel that keeps you in control. Let\'s get you set up.</string>
+    <string name="onboarding_title_2">Enable Accessibility</string>
+    <string name="onboarding_body_2">Oak needs accessibility access to see your screen and perform actions like tapping, scrolling, and typing.\n\nAfter tapping the button below:\n\n1. Find \"Oak &amp; Sparrow\" in the list\n2. Tap it\n3. Toggle the switch ON\n4. Tap \"Allow\" on the confirmation dialog\n5. Come back to this app</string>
     <string name="onboarding_title_3">Notifications</string>
-    <string name="onboarding_body_3">We need notification permission to show you when agent actions need your approval and to display the governance status.</string>
-    <string name="onboarding_title_4">Digital assistant</string>
-    <string name="onboarding_body_4">Set Oak &amp; Sparrow as your default digital assistant so you can launch it by long-pressing the home button.</string>
-    <string name="onboarding_title_5">Display over apps</string>
-    <string name="onboarding_body_5">Allow Oak to show a floating mic button on top of other apps so you can talk to your assistant from anywhere — while browsing, texting, or using any app.</string>
+    <string name="onboarding_body_3">Allow notifications so Oak can tell you when an action needs your approval, or show you what it\'s working on.</string>
+    <string name="onboarding_title_4">Default Assistant</string>
+    <string name="onboarding_body_4">Make Oak your default assistant so you can launch it anytime by long-pressing the home button — just like Google Assistant or Bixby.</string>
+    <string name="onboarding_title_5">Display Over Apps</string>
+    <string name="onboarding_body_5">Allow Oak to show its voice overlay on top of other apps. This lets you talk to Oak while using any app — just long-press home to bring it up.</string>
     <string name="btn_next">Next</string>
-    <string name="btn_open_settings">Open Settings</string>
+    <string name="btn_open_settings">Open Accessibility Settings</string>
     <string name="btn_set_assistant">Set as Default</string>
     <string name="btn_allow_overlay">Allow Overlay</string>
-    <string name="btn_grant">Grant</string>
+    <string name="btn_grant">Allow Notifications</string>
     <string name="btn_skip">Skip</string>
     <string name="btn_get_started">Get Started</string>
 
