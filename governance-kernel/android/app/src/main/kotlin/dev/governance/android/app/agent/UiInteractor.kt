@@ -93,28 +93,20 @@ object UiInteractor {
     /**
      * Scrolls the current screen in the given direction.
      */
+    /**
+     * Scrolls the current screen using a vertical gesture swipe.
+     *
+     * Always uses gesture-based scrolling instead of ACTION_SCROLL_FORWARD
+     * on accessibility nodes. The node-based approach causes horizontal
+     * swiping in apps like Instagram where ViewPager and horizontal
+     * RecyclerViews intercept the scroll action. A vertical finger gesture
+     * always scrolls the visible content vertically.
+     */
     suspend fun scroll(direction: String): InteractionResult {
         val service = AccessibilityObservationService.getInstance()
             ?: return InteractionResult.Failed("Accessibility service not connected")
 
-        val root = service.rootInActiveWindow
-            ?: return InteractionResult.Failed("No active window")
-
         try {
-            val scrollable = findScrollable(root)
-            if (scrollable != null) {
-                val action = when (direction.lowercase()) {
-                    "down", "forward" -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                    "up", "backward" -> AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                    else -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-                }
-                scrollable.performAction(action)
-                delay(1000) // Wait for scroll animation + content load
-                Log.i(TAG, "Scrolled $direction")
-                return InteractionResult.Success("Scrolled $direction")
-            }
-
-            // Fallback: gesture-based scroll
             val displayMetrics = android.content.res.Resources.getSystem().displayMetrics
             val centerX = displayMetrics.widthPixels / 2f
             val startY: Float
@@ -135,7 +127,7 @@ object UiInteractor {
                 .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 300))
                 .build()
             service.dispatchGesture(gesture, null, null)
-            delay(1000)
+            delay(1200) // Wait for scroll animation + content load
             Log.i(TAG, "Scrolled $direction (gesture)")
             return InteractionResult.Success("Scrolled $direction")
         } catch (e: Exception) {
