@@ -28,3 +28,6 @@ local.properties
 
 # Claude Code worktrees
 .claude/
+
+# Jackson Castro's reference module (advisor IP, do not commit)
+_jackson_reference/

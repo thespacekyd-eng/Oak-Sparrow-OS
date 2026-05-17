@@ -19,6 +19,7 @@ include(":adversarial")
 include(":testing")
 include(":plan-governance")
 include(":perception")
+include(":plan-metrics")
 
 // Phase 2A — Android service infrastructure
 include(":android-platform")
