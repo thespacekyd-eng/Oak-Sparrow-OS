@@ -17,6 +17,10 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 /**
@@ -65,20 +69,32 @@ class VoiceController(
     private var tts: TextToSpeech? = null
     private var ttsReady: Boolean = false
 
+    // Neural TTS (Kokoro via sherpa-onnx) — preferred when available
+    private val oakTts = OakTtsEngine(context)
+    private val useOakTts: Boolean get() = oakTts.isAvailable
+    private val ttsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
-        // Pre-initialize TTS eagerly to eliminate first-speak latency
+        // Try to initialize Kokoro neural TTS first
+        if (oakTts.isAvailable) {
+            val ok = oakTts.init()
+            Log.i(TAG, "Kokoro neural TTS: ${if (ok) "ready" else "init failed, will use Android TTS"}")
+            oakTts.onDone = { transition(VoiceState.Event.SpeakDone) }
+            oakTts.onError = { msg -> transition(VoiceState.Event.Fail(msg)) }
+        }
+
+        // Pre-initialize Android TTS as fallback
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.US
-                // Select a natural-sounding voice if available
                 selectBestVoice(tts!!)
                 tts?.setSpeechRate(1.0f)
                 tts?.setPitch(1.0f)
                 tts?.setOnUtteranceProgressListener(progressListener)
                 ttsReady = true
-                Log.i(TAG, "TTS pre-initialized successfully, voice: ${tts?.voice?.name}")
+                Log.i(TAG, "Android TTS fallback ready, voice: ${tts?.voice?.name}")
             } else {
-                Log.e(TAG, "TTS pre-init failed, will retry on first speak")
+                Log.e(TAG, "Android TTS fallback init failed")
                 tts = null
             }
         }
@@ -180,6 +196,17 @@ class VoiceController(
             transition(VoiceState.Event.SpeakDone)
             return
         }
+
+        // Use Kokoro neural TTS if available — much more natural voice
+        if (useOakTts) {
+            transition(VoiceState.Event.SpeakStart(text))
+            ttsScope.launch {
+                oakTts.speak(text)
+            }
+            return
+        }
+
+        // Fallback to Android TTS
         // Strip emojis and special unicode symbols so TTS doesn't read
         // "smiling face with open mouth" etc. — speak like a human.
         val clean = text
@@ -211,6 +238,7 @@ class VoiceController(
 
     /** Stops any in-flight TTS. */
     fun stopSpeaking() {
+        oakTts.stop()
         tts?.stop()
         if (_state.value is VoiceState.Speaking) {
             transition(VoiceState.Event.SpeakDone)
@@ -221,6 +249,7 @@ class VoiceController(
     fun shutdown() {
         recognizer?.destroy()
         recognizer = null
+        oakTts.shutdown()
         tts?.stop()
         tts?.shutdown()
         tts = null
