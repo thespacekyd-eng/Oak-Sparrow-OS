@@ -38,6 +38,8 @@ fun HomeScreen(
     onDecisionTap: (GateDecision) -> Unit,
     onSeeDetails: () -> Unit,
     onChatTap: (() -> Unit)? = null,
+    onVoiceChatTap: (() -> Unit)? = null,
+    onSettingsTap: (() -> Unit)? = null,
     buildMode: BuildMode = BuildMode.App,
     modifier: Modifier = Modifier,
 ) {
@@ -184,6 +186,42 @@ fun HomeScreen(
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        // Voice chat entry point
+        onVoiceChatTap?.let { onTap ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTap() },
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                ),
+            ) {
+                Text(
+                    "\uD83C\uDF99 Voice chat",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+
+        // Settings entry point
+        onSettingsTap?.let { onTap ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTap() },
+            ) {
+                Text(
+                    "Settings",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
                 )
             }
             Spacer(Modifier.height(12.dp))
