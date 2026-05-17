@@ -64,6 +64,23 @@ class VoiceController(
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady: Boolean = false
+
+    init {
+        // Pre-initialize TTS eagerly to eliminate first-speak latency
+        tts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.getDefault()
+                tts?.setSpeechRate(1.05f)
+                tts?.setPitch(0.95f)
+                tts?.setOnUtteranceProgressListener(progressListener)
+                ttsReady = true
+                Log.i(TAG, "TTS pre-initialized successfully")
+            } else {
+                Log.e(TAG, "TTS pre-init failed, will retry on first speak")
+                tts = null
+            }
+        }
+    }
     /** Tracks whether we tried the on-device recognizer and it failed. */
     private var onDeviceFailed: Boolean = false
 
@@ -125,13 +142,32 @@ class VoiceController(
             transition(VoiceState.Event.SpeakDone)
             return
         }
+        // Strip emojis and special unicode symbols so TTS doesn't read
+        // "smiling face with open mouth" etc. — speak like a human.
+        val clean = text
+            .replace(Regex("[\\x{1F600}-\\x{1F64F}]"), "")  // emoticons
+            .replace(Regex("[\\x{1F300}-\\x{1F5FF}]"), "")  // symbols & pictographs
+            .replace(Regex("[\\x{1F680}-\\x{1F6FF}]"), "")  // transport & map
+            .replace(Regex("[\\x{1F1E0}-\\x{1F1FF}]"), "")  // flags
+            .replace(Regex("[\\x{2600}-\\x{27BF}]"), "")    // misc symbols
+            .replace(Regex("[\\x{FE00}-\\x{FE0F}]"), "")    // variation selectors
+            .replace(Regex("[\\x{1F900}-\\x{1F9FF}]"), "")  // supplemental
+            .replace(Regex("[\\x{200D}]"), "")               // zero-width joiner
+            .replace(Regex("[\\x{20E3}]"), "")               // combining enclosing keycap
+            .replace(Regex("[\\x{2702}-\\x{27B0}]"), "")    // dingbats
+            .replace(Regex("\\s{2,}"), " ")                  // collapse double spaces
+            .trim()
+        if (clean.isBlank()) {
+            transition(VoiceState.Event.SpeakDone)
+            return
+        }
         ensureTts {
             val engine = tts ?: return@ensureTts run {
                 transition(VoiceState.Event.Fail("TTS engine unavailable."))
             }
-            transition(VoiceState.Event.SpeakStart(text))
+            transition(VoiceState.Event.SpeakStart(clean))
             val utteranceId = "u-${System.nanoTime()}"
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            engine.speak(clean, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         }
     }
 
@@ -267,6 +303,9 @@ class VoiceController(
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.getDefault()
+                // Slightly faster and lower pitch for a more natural, confident voice
+                tts?.setSpeechRate(1.05f)
+                tts?.setPitch(0.95f)
                 tts?.setOnUtteranceProgressListener(progressListener)
                 ttsReady = true
                 then()
