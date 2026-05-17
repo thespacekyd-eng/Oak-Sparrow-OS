@@ -48,6 +48,12 @@ class VisionAgentLoop(
     suspend fun execute(task: String): LoopResult {
         val history = mutableListOf<String>()
         var consecutiveFailures = 0
+        // Get actual screen size for coordinate scaling.
+        // Screenshots are scaled to SCREENSHOT_WIDTH px wide (aspect preserved),
+        // so both x and y use the same scale factor.
+        val screenWidth = android.content.res.Resources.getSystem().displayMetrics.widthPixels
+        val coordScale = screenWidth.toFloat() / SCREENSHOT_WIDTH
+        Log.i(TAG, "Screen width: $screenWidth, coordScale: $coordScale")
 
         for (step in 0 until maxSteps) {
             // 1. Take screenshot (must be on Main thread for accessibility service)
@@ -85,8 +91,11 @@ class VisionAgentLoop(
 
             when (action) {
                 is Action.Tap -> {
-                    Log.i(TAG, "Step $step: TAP at (${action.x}, ${action.y})")
-                    UiInteractor.tapAtCoordinates(action.x, action.y)
+                    // Scale from screenshot coords to actual screen coords
+                    val realX = (action.x * coordScale).toInt()
+                    val realY = (action.y * coordScale).toInt()
+                    Log.i(TAG, "Step $step: TAP screenshot(${action.x},${action.y}) → screen($realX,$realY)")
+                    UiInteractor.tapAtCoordinates(realX, realY)
                     delay(1500)
                     consecutiveFailures = 0
                 }
@@ -298,6 +307,7 @@ class VisionAgentLoop(
         private const val TAG = "VisionAgentLoop"
         private const val API_URL = "https://api.anthropic.com/v1/messages"
         private const val API_VERSION = "2023-06-01"
+        private const val SCREENSHOT_WIDTH = 720
 
         private val SYSTEM_PROMPT = """
 You are Oak, an AI agent that controls a phone by looking at screenshots.
@@ -313,13 +323,12 @@ DONE summary — task is complete (explain what you did)
 ABORT reason — task cannot be completed
 
 IMPORTANT RULES:
-1. The screenshot is SCALED DOWN. Coordinates must be for the ORIGINAL screen.
-   The original screen is typically 1080px wide. The screenshot is 720px wide.
-   Multiply your x coordinates by 1.5 and y coordinates by 1.5.
+1. Return coordinates AS THEY APPEAR in the screenshot image. The image is
+   720px wide. Do NOT scale or multiply coordinates — just use pixel positions
+   from the screenshot directly.
 2. Look carefully at the screenshot. Identify buttons, icons, and text.
 3. For "like" on Instagram: find the heart icon below a post image (left side,
-   below the photo). TAP it regardless of whether it looks filled or not —
-   you cannot reliably tell from the screenshot. After tapping, report DONE.
+   below the photo, row of icons: heart, comment, share, save). TAP the heart.
 4. Be precise with coordinates — tap the CENTER of the target element.
 5. One action per response. No explanations. Just the action line.
 
