@@ -20,6 +20,9 @@ class ConversationEngine(
     private val apiKey: String,
     private val model: String = "claude-opus-4-6",
     private val maxTokens: Int = 512,
+    var memoryBlock: String = "",
+    var onRemember: ((String) -> Unit)? = null,
+    var onForget: ((String) -> Unit)? = null,
 ) {
     private val history = mutableListOf<Message>()
 
@@ -59,10 +62,16 @@ class ConversationEngine(
             }
         }
 
+        val systemPrompt = if (memoryBlock.isNotBlank()) {
+            SYSTEM_PROMPT + "\n" + memoryBlock + "\n" + MEMORY_INSTRUCTIONS
+        } else {
+            SYSTEM_PROMPT
+        }
+
         val requestBody = buildJsonObject {
             put("model", model)
             put("max_tokens", maxTokens)
-            put("system", SYSTEM_PROMPT)
+            put("system", systemPrompt)
             put("messages", messagesArray)
         }.toString()
 
@@ -95,10 +104,27 @@ class ConversationEngine(
                 ?: throw RuntimeException("No content in API response")
 
             val restored = PiiSanitizer.restore(content, sanitized.mappings)
-            history.add(Message("assistant", restored))
 
-            Log.i(TAG, "Conversation turn ${history.size / 2}: ${restored.length} chars")
-            restored
+            // Extract and process memory commands before cleaning the response
+            val memoryCommands = Regex("\\[REMEMBER:\\s*(.+?)]").findAll(restored)
+            val forgetCommands = Regex("\\[FORGET:\\s*(.+?)]").findAll(restored)
+            for (match in memoryCommands) {
+                onRemember?.invoke(match.groupValues[1].trim())
+            }
+            for (match in forgetCommands) {
+                onForget?.invoke(match.groupValues[1].trim())
+            }
+
+            // Strip memory tags from visible response
+            val cleanResponse = restored
+                .replace(Regex("\\[REMEMBER:\\s*.+?]"), "")
+                .replace(Regex("\\[FORGET:\\s*.+?]"), "")
+                .trim()
+
+            history.add(Message("assistant", cleanResponse))
+
+            Log.i(TAG, "Conversation turn ${history.size / 2}: ${cleanResponse.length} chars")
+            cleanResponse
         } finally {
             connection.disconnect()
         }
@@ -124,6 +150,14 @@ class ConversationEngine(
             - If the user asks you to do something on their phone (open apps, send messages, etc),
               tell them to say a command like "open instagram" or "text mom" and you'll handle it.
             - Don't say "sure!" or "of course!" before every response — just answer naturally.
+        """.trimIndent()
+
+        private val MEMORY_INSTRUCTIONS = """
+            When the user tells you personal information (their name, preferences, important people,
+            routines, etc.), remember it. If you learn something new worth remembering, end your
+            response with a line like: [REMEMBER: user's name is Josh] or [REMEMBER: user prefers dark mode]
+            Only add [REMEMBER: ...] for genuinely useful persistent facts, not transient conversation details.
+            If the user asks you to forget something: [FORGET: user's name is Josh]
         """.trimIndent()
     }
 }

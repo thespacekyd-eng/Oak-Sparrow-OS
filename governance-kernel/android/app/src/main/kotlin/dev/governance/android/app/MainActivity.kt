@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private var kernelInterface: AgentKernelInterface? = null
+    private var kernelInterface by mutableStateOf<AgentKernelInterface?>(null)
     private var snapshot by mutableStateOf<GovernanceSnapshot?>(null)
 
     private val connection = object : ServiceConnection {
@@ -108,10 +108,16 @@ private fun MainNavigation(
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var chatInput by remember { mutableStateOf("") }
     var isProcessing by remember { mutableStateOf(false) }
+    var currentConversationId by remember { mutableStateOf("conv-${System.currentTimeMillis()}") }
+    val conversationStore = remember { ConversationStore(context) }
+    var conversationList by remember { mutableStateOf(conversationStore.listConversations()) }
 
     // User preferences
     var llmMode by remember { mutableStateOf(LlmPreference.getLlmMode(context)) }
     val hasCloudKey = BuildConfig.CLOUD_API_KEY.isNotBlank()
+
+    // Memory
+    val oakMemory = remember { OakMemory(context) }
 
     // LLM wiring
     val cloudEnabled = hasCloudKey && llmMode != LlmMode.ON_DEVICE
@@ -122,7 +128,14 @@ private fun MainNavigation(
         )
         val local = LlamaCppLlmEngine(context)
         val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
-        val conversation = if (cloudEnabled) ConversationEngine(apiKey = BuildConfig.CLOUD_API_KEY) else null
+        val conversation = if (cloudEnabled) {
+            ConversationEngine(
+                apiKey = BuildConfig.CLOUD_API_KEY,
+                memoryBlock = oakMemory.toPromptBlock(),
+                onRemember = { fact -> oakMemory.addMemory(fact) },
+                onForget = { fact -> oakMemory.removeMemory(fact) },
+            )
+        } else null
         Planner(hybrid, conversationEngine = conversation)
     }
     val dispatcher = remember {
@@ -174,6 +187,9 @@ private fun MainNavigation(
                                 id = "err-${System.nanoTime()}", role = ChatRole.AGENT, text = planResult.message,
                             ))
                         }
+                        // Auto-save conversation
+                        conversationStore.saveConversation(currentConversationId, messages.toList())
+                        conversationList = conversationStore.listConversations()
                         isProcessing = false
                     }
                 }
@@ -190,12 +206,38 @@ private fun MainNavigation(
                 modifier = Modifier.width(300.dp),
             ) {
                 DrawerContent(
+                    conversations = conversationList,
+                    currentConversationId = currentConversationId,
                     onNewChat = {
                         messages.clear()
+                        currentConversationId = "conv-${System.currentTimeMillis()}"
+                        planner.resetConversation()
                         scope.launch { drawerState.close() }
                         navController.navigate("chat") {
                             popUpTo("chat") { inclusive = true }
                             launchSingleTop = true
+                        }
+                    },
+                    onLoadConversation = { summary ->
+                        val loaded = conversationStore.loadConversation(summary.id)
+                        if (loaded != null) {
+                            messages.clear()
+                            messages.addAll(loaded)
+                            currentConversationId = summary.id
+                            planner.resetConversation()
+                        }
+                        scope.launch { drawerState.close() }
+                        navController.navigate("chat") {
+                            popUpTo("chat") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onDeleteConversation = { summary ->
+                        conversationStore.deleteConversation(summary.id)
+                        conversationList = conversationStore.listConversations()
+                        if (summary.id == currentConversationId) {
+                            messages.clear()
+                            currentConversationId = "conv-${System.currentTimeMillis()}"
                         }
                     },
                     onVoiceChat = {
@@ -390,7 +432,11 @@ private fun MainNavigation(
 
 @Composable
 private fun DrawerContent(
+    conversations: List<ConversationSummary>,
+    currentConversationId: String,
     onNewChat: () -> Unit,
+    onLoadConversation: (ConversationSummary) -> Unit,
+    onDeleteConversation: (ConversationSummary) -> Unit,
     onVoiceChat: () -> Unit,
     onGovernance: () -> Unit,
     onSettings: () -> Unit,
@@ -444,17 +490,73 @@ private fun DrawerContent(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+
+        // Conversation history
+        if (conversations.isNotEmpty()) {
+            Text(
+                "Recent",
+                style = MaterialTheme.typography.labelSmall,
+                color = OakPalette.TextTertiary,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+            ) {
+                items(conversations, key = { it.id }) { conv ->
+                    val isActive = conv.id == currentConversationId
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onLoadConversation(conv) }
+                            .background(if (isActive) OakPalette.SurfaceVariant else OakPalette.DrawerBackground)
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Chat,
+                            null,
+                            Modifier.size(16.dp),
+                            tint = if (isActive) OakPalette.Primary else OakPalette.TextTertiary,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                conv.title,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isActive) OakPalette.TextPrimary else OakPalette.TextSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        IconButton(
+                            onClick = { onDeleteConversation(conv) },
+                            modifier = Modifier.size(24.dp),
+                        ) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Delete",
+                                modifier = Modifier.size(14.dp),
+                                tint = OakPalette.TextTertiary,
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
+
         HorizontalDivider(color = OakPalette.Outline, modifier = Modifier.padding(horizontal = 20.dp))
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
         // Navigation items
-        DrawerItem(icon = Icons.AutoMirrored.Filled.Chat, label = "Chat", onClick = onNewChat)
         DrawerItem(icon = Icons.Filled.Mic, label = "Voice mode", onClick = onVoiceChat)
         DrawerItem(icon = Icons.Filled.Shield, label = "Governance", onClick = onGovernance)
         DrawerItem(icon = Icons.Filled.Settings, label = "Settings", onClick = onSettings)
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(8.dp))
 
         // Footer
         Text(
