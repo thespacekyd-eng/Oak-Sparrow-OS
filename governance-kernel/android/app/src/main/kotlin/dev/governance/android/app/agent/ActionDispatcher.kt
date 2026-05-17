@@ -107,6 +107,8 @@ class ActionDispatcher(
             "set_volume" -> dispatchSetVolume(step.target ?: "")
             "toggle_flashlight" -> dispatchToggleFlashlight()
             "toggle_dnd" -> dispatchToggleDnd()
+            "read_sms" -> dispatchReadSms(step.target)
+            "set_brightness" -> dispatchSetBrightness(step.target ?: "")
             "custom_intent" -> dispatchCustomIntent(step.target ?: "", step.message)
             "ui_interact" -> dispatchUiInteract(step.target ?: "", step.message)
             else -> DispatchResult.Unsupported(
@@ -139,10 +141,13 @@ class ActionDispatcher(
     private suspend fun dispatchSendEmail(target: String, message: String?): DispatchResult {
         try {
             val mailto = if (target.contains("@")) target else "$target@example.com"
+            // Use message as subject if it's short (likely "about X")
+            val subject = if (message != null && message.length < 60) message else "From Oak & Sparrow"
+            val body = if (message != null && message.length >= 60) message else ""
             val intent = Intent(Intent.ACTION_SENDTO).apply {
                 data = Uri.parse("mailto:$mailto")
-                putExtra(Intent.EXTRA_SUBJECT, "From Oak & Sparrow")
-                putExtra(Intent.EXTRA_TEXT, message ?: "")
+                putExtra(Intent.EXTRA_SUBJECT, subject)
+                putExtra(Intent.EXTRA_TEXT, body)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
@@ -517,6 +522,139 @@ class ActionDispatcher(
             DispatchResult.Success("Do Not Disturb settings opened.")
         } catch (e: Exception) {
             DispatchResult.Failed("Could not open DND settings: ${e.message}")
+        }
+    }
+
+    /**
+     * Reads recent SMS messages from the content provider.
+     * target = optional contact name filter, or null for "last message".
+     */
+    private fun dispatchReadSms(target: String?): DispatchResult {
+        return try {
+            val projection = arrayOf("address", "body", "date", "type")
+            val sortOrder = "date DESC"
+            val limit = if (target.isNullOrBlank()) 5 else 10
+
+            val cursor = context.contentResolver.query(
+                Uri.parse("content://sms/inbox"),
+                projection,
+                null, null, "$sortOrder LIMIT $limit",
+            )
+
+            if (cursor == null || !cursor.moveToFirst()) {
+                cursor?.close()
+                return DispatchResult.Success("No text messages found.")
+            }
+
+            val messages = mutableListOf<String>()
+            val contactFilter = target?.lowercase()?.trim()
+
+            do {
+                val address = cursor.getString(0) ?: "Unknown"
+                val body = cursor.getString(1) ?: ""
+                val date = cursor.getLong(2)
+                val timeStr = java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US)
+                    .format(java.util.Date(date))
+
+                // Resolve address to contact name
+                val displayName = resolveContactName(address) ?: address
+
+                // Filter by contact if specified
+                if (contactFilter != null && contactFilter.isNotBlank()) {
+                    if (!displayName.lowercase().contains(contactFilter) &&
+                        !address.contains(contactFilter)) continue
+                }
+
+                messages.add("From $displayName ($timeStr): $body")
+                if (messages.size >= 5) break
+            } while (cursor.moveToNext())
+            cursor.close()
+
+            if (messages.isEmpty()) {
+                DispatchResult.Success("No messages found from ${target ?: "anyone"}.")
+            } else {
+                val label = if (contactFilter.isNullOrBlank()) "Recent texts" else "Texts from $target"
+                DispatchResult.Success("$label:\n${messages.joinToString("\n")}")
+            }
+        } catch (e: SecurityException) {
+            DispatchResult.Failed("SMS permission not granted. Please allow SMS access in Settings.")
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not read messages: ${e.message}")
+        }
+    }
+
+    /** Resolves a phone number to a contact display name. */
+    private fun resolveContactName(phoneNumber: String): String? {
+        try {
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber),
+            )
+            val cursor = context.contentResolver.query(
+                uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null, null, null,
+            )
+            cursor?.use {
+                if (it.moveToFirst()) return it.getString(0)
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    /**
+     * Sets screen brightness programmatically.
+     * target = "50%", "max", "low", "auto", etc.
+     */
+    private fun dispatchSetBrightness(target: String): DispatchResult {
+        return try {
+            val lower = target.lowercase().trim()
+
+            // Check WRITE_SETTINGS permission
+            if (!Settings.System.canWrite(context)) {
+                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return DispatchResult.Success("Please grant 'Modify system settings' permission, then try again.")
+            }
+
+            when {
+                lower.contains("auto") -> {
+                    Settings.System.putInt(
+                        context.contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC,
+                    )
+                    DispatchResult.Success("Brightness set to auto.")
+                }
+                lower.contains("max") || lower.contains("full") || lower.contains("100") -> {
+                    Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+                    Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 255)
+                    DispatchResult.Success("Brightness set to maximum.")
+                }
+                lower.contains("low") || lower.contains("dim") || lower.contains("min") -> {
+                    Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+                    Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 25)
+                    DispatchResult.Success("Brightness set to low.")
+                }
+                else -> {
+                    val pct = Regex("\\d+").find(lower)?.value?.toIntOrNull()
+                    if (pct != null) {
+                        val brightness = (pct * 255 / 100).coerceIn(1, 255)
+                        Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+                        Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, brightness)
+                        DispatchResult.Success("Brightness set to $pct%.")
+                    } else {
+                        // Open display settings as fallback
+                        val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                        context.startActivity(intent)
+                        DispatchResult.Success("Opened display settings.")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            DispatchResult.Failed("Could not set brightness: ${e.message}")
         }
     }
 

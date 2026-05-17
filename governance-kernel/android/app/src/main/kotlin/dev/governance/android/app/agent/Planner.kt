@@ -225,6 +225,8 @@ class Planner(
             "set_volume",
             "toggle_flashlight",
             "toggle_dnd",
+            "read_sms",
+            "set_brightness",
             "custom_intent",
             "ui_interact",
         )
@@ -273,6 +275,45 @@ class Planner(
                         kind = "open_app",
                         target = "gmail",
                         rationale = "Open email app to check inbox",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
+            // --- Read SMS ---
+            // "read my texts", "check my messages", "what did mom text me",
+            // "read last text", "show my sms"
+            if ((lower.contains("read") || lower.contains("check") || lower.contains("show") ||
+                lower.contains("what did") || lower.contains("last")) &&
+                (lower.contains("text") || lower.contains("sms") ||
+                 lower.contains("message")) && !lower.contains("email")) {
+                val contact = Regex("(?:from|did)\\s+(\\w+(?:\\s+\\w+)?)", RegexOption.IGNORE_CASE)
+                    .find(instruction)?.groupValues?.get(1)?.trim()
+                return PlanResult.Success(Plan(
+                    summary = if (contact != null) "Read texts from $contact" else "Read recent texts",
+                    steps = listOf(PlannedStep(
+                        kind = "read_sms",
+                        target = contact,
+                        rationale = "Read SMS messages",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
+            // --- Brightness ---
+            if (lower.contains("brightness")) {
+                val level = when {
+                    lower.contains("max") || lower.contains("full") || lower.contains("100") -> "max"
+                    lower.contains("low") || lower.contains("dim") || lower.contains("min") -> "low"
+                    lower.contains("auto") -> "auto"
+                    else -> Regex("\\d+").find(lower)?.value?.let { "${it}%" } ?: "50%"
+                }
+                return PlanResult.Success(Plan(
+                    summary = "Set brightness to $level",
+                    steps = listOf(PlannedStep(
+                        kind = "set_brightness",
+                        target = level,
+                        rationale = "Adjust screen brightness",
                         reversibility = Reversibility.FullyReversible,
                     )),
                 ))
@@ -425,27 +466,50 @@ class Planner(
             // --- Settings ---
             if (lower.contains("turn on") || lower.contains("turn off") ||
                 lower.contains("enable") || lower.contains("disable") ||
-                lower.contains("setting") || lower.contains("brightness") ||
-                lower.contains("volume") || lower.contains("wifi") ||
+                lower.contains("setting") || lower.contains("wifi") ||
                 lower.contains("bluetooth") || lower.contains("airplane")) {
                 val setting = when {
                     lower.contains("wifi") || lower.contains("wi-fi") -> "wifi"
                     lower.contains("bluetooth") || lower.contains("bt") -> "bluetooth"
                     lower.contains("airplane") -> "airplane"
-                    lower.contains("brightness") || lower.contains("display") -> "brightness"
                     lower.contains("volume") || lower.contains("sound") -> "sound"
                     lower.contains("location") || lower.contains("gps") -> "location"
                     else -> ""
                 }
-                return PlanResult.Success(Plan(
-                    summary = "Change $setting settings",
-                    steps = listOf(PlannedStep(
-                        kind = "change_setting",
-                        target = setting,
-                        rationale = "Open settings as requested",
-                        reversibility = Reversibility.PartiallyReversible,
-                    )),
-                ))
+                val isToggle = lower.contains("turn on") || lower.contains("turn off") ||
+                    lower.contains("enable") || lower.contains("disable")
+                val toggleAction = if (lower.contains("on") || lower.contains("enable")) "on" else "off"
+
+                return if (isToggle && setting.isNotBlank()) {
+                    // Open settings page then use vision loop to tap the toggle
+                    PlanResult.Success(Plan(
+                        summary = "Turn $toggleAction $setting",
+                        steps = listOf(
+                            PlannedStep(
+                                kind = "change_setting",
+                                target = setting,
+                                rationale = "Open $setting settings page",
+                                reversibility = Reversibility.PartiallyReversible,
+                            ),
+                            PlannedStep(
+                                kind = "ui_interact",
+                                target = "Turn $toggleAction the $setting toggle switch. Look for a switch/toggle and tap it to turn it $toggleAction.",
+                                rationale = "Tap the toggle to change the setting",
+                                reversibility = Reversibility.PartiallyReversible,
+                            ),
+                        ),
+                    ))
+                } else {
+                    PlanResult.Success(Plan(
+                        summary = "Change $setting settings",
+                        steps = listOf(PlannedStep(
+                            kind = "change_setting",
+                            target = setting,
+                            rationale = "Open settings as requested",
+                            reversibility = Reversibility.PartiallyReversible,
+                        )),
+                    ))
+                }
             }
 
             // --- Music ---
@@ -640,11 +704,12 @@ class Planner(
             return toMatch?.groupValues?.get(1) ?: ""
         }
 
-        /** Extracts a message body after "saying", "that", "with message". */
+        /** Extracts a message body after "saying", "that", "about", "with message". */
         internal fun extractMessage(instruction: String): String? {
             val patterns = listOf(
                 Regex("(?:saying|say)\\s+(.+)", RegexOption.IGNORE_CASE),
                 Regex("(?:with message|message)\\s+(.+)", RegexOption.IGNORE_CASE),
+                Regex("\\babout\\s+(.+)", RegexOption.IGNORE_CASE),
                 Regex("(?:that)\\s+(.+)", RegexOption.IGNORE_CASE),
             )
             for (p in patterns) {
@@ -714,7 +779,7 @@ class Planner(
         internal fun buildPrompt(instruction: String): String = """
 <|im_start|>system
 You are Oak, a friendly private AI phone assistant. /no_think
-You can ONLY use these actions: open_app, send_sms, send_email, make_call, set_alarm, set_timer, search_web, open_url, get_directions, take_photo, change_setting, play_music, create_event, read_calendar, share_to_social_app, set_wallpaper, set_volume, toggle_flashlight, toggle_dnd, custom_intent, ui_interact
+You can ONLY use these actions: open_app, send_sms, send_email, make_call, set_alarm, set_timer, search_web, open_url, get_directions, take_photo, change_setting, play_music, create_event, read_calendar, share_to_social_app, set_wallpaper, set_volume, toggle_flashlight, toggle_dnd, read_sms, set_brightness, custom_intent, ui_interact
 IMPORTANT: You must NEVER invent new action kinds. If the user asks for something, figure out how to do it with the actions above:
 - "download/install an app" → open_app with target "play store"
 - "check email/inbox" → open_app with target "gmail"
