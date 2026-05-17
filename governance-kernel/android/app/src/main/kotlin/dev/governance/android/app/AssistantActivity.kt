@@ -132,8 +132,10 @@ private fun AssistantVoiceChat(
         val hybrid = HybridLlmEngine(
             cloud = cloud, local = local, cloudEnabled = cloudEnabled,
         )
+        val webSearchEngine = WebSearchEngine()
         val conversation = if (cloudEnabled) ConversationEngine(
             apiKey = BuildConfig.CLOUD_API_KEY,
+            webSearch = webSearchEngine,
         ) else null
         Planner(hybrid, conversationEngine = conversation)
     }
