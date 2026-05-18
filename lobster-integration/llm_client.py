@@ -13,7 +13,8 @@ Three operating modes:
                 and CI where live LLM calls are unnecessary.
 
 Environment variables:
-  ANTHROPIC_API_KEY   — use Claude as the backend
+  LLM_PROVIDER        — force provider: "gemini" or "claude"
+  ANTHROPIC_API_KEY   — use Claude as the backend (default if no LLM_PROVIDER set)
   GEMINI_API_KEY      — use Gemini as the backend
   LOBSTER_TRAP_URL    — Lobster Trap proxy base URL (e.g. http://localhost:8080)
   LOBSTER_OFFLINE     — set to "1" to force offline/canned-response mode
@@ -35,8 +36,14 @@ from lobster_anomaly import LobsterEvent, simulate_dpi
 def _detect_provider() -> Tuple[str, str]:
     """
     Returns (provider, api_key).
-    Preference order: ANTHROPIC_API_KEY → GEMINI_API_KEY → offline.
+    Preference order: LLM_PROVIDER → ANTHROPIC_API_KEY → GEMINI_API_KEY → offline.
     """
+    forced = os.environ.get("LLM_PROVIDER", "").lower()
+    if forced == "gemini":
+        return "gemini", os.environ.get("GEMINI_API_KEY", "")
+    elif forced in ("claude", "anthropic"):
+        return "claude", os.environ.get("ANTHROPIC_API_KEY", "")
+
     if key := os.environ.get("ANTHROPIC_API_KEY"):
         return "claude", key
     if key := os.environ.get("GEMINI_API_KEY"):
