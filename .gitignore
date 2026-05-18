@@ -31,3 +31,7 @@ local.properties
 
 # Jackson Castro's reference module (advisor IP, do not commit)
 _jackson_reference/
+
+__pycache__/
+*.pyc
+*.pyo
