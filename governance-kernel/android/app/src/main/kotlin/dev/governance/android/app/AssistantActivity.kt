@@ -120,31 +120,40 @@ private fun AssistantVoiceChat(
 ) {
     val scope = rememberCoroutineScope()
     val llmMode = remember { LlmPreference.getLlmMode(context) }
+    val cloudProvider = remember { CloudProviderPreference.get(context) }
 
-    // Planner + LLM wiring
+    // Planner + LLM wiring — provider-aware
+    val anyCloudAvailable = (BuildConfig.CLOUD_API_KEY.isNotBlank() && cloudProvider == CloudProvider.CLAUDE) ||
+        (BuildConfig.GEMINI_API_KEY.isNotBlank() && cloudProvider == CloudProvider.GEMINI)
+    val cloudEnabled = anyCloudAvailable && llmMode != LlmMode.ON_DEVICE
     val planner = remember {
-        val cloud = CloudLlmEngine(
-            apiKey = BuildConfig.CLOUD_API_KEY,
-            model = BuildConfig.CLOUD_MODEL,
-        )
+        val cloud: LlmEngine = when (cloudProvider) {
+            CloudProvider.CLAUDE -> CloudLlmEngine(apiKey = BuildConfig.CLOUD_API_KEY, model = BuildConfig.CLOUD_MODEL)
+            CloudProvider.GEMINI -> GeminiLlmEngine(apiKey = BuildConfig.GEMINI_API_KEY)
+        }
         val local = LlamaCppLlmEngine(context)
-        val cloudEnabled = BuildConfig.CLOUD_API_KEY.isNotBlank() && llmMode != LlmMode.ON_DEVICE
-        val hybrid = HybridLlmEngine(
-            cloud = cloud, local = local, cloudEnabled = cloudEnabled,
-        )
+        val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
         val webSearchEngine = WebSearchEngine()
-        val conversation = if (cloudEnabled) ConversationEngine(
-            apiKey = BuildConfig.CLOUD_API_KEY,
-            webSearch = webSearchEngine,
-        ) else null
+        val conversation: ConversationProvider? = if (cloudEnabled) {
+            when (cloudProvider) {
+                CloudProvider.CLAUDE -> ConversationEngine(
+                    apiKey = BuildConfig.CLOUD_API_KEY,
+                    webSearch = webSearchEngine,
+                )
+                CloudProvider.GEMINI -> GeminiConversationEngine(
+                    apiKey = BuildConfig.GEMINI_API_KEY,
+                    webSearch = webSearchEngine,
+                )
+            }
+        } else null
         Planner(hybrid, conversationEngine = conversation)
     }
     val dispatcher = remember {
-        val cloud = CloudLlmEngine(
-            apiKey = BuildConfig.CLOUD_API_KEY,
-            model = BuildConfig.CLOUD_MODEL,
-        )
-        ActionDispatcher(context, agentLoopEngine = cloud)
+        val agentEngine: LlmEngine = when (cloudProvider) {
+            CloudProvider.CLAUDE -> CloudLlmEngine(apiKey = BuildConfig.CLOUD_API_KEY, model = BuildConfig.CLOUD_MODEL)
+            CloudProvider.GEMINI -> GeminiLlmEngine(apiKey = BuildConfig.GEMINI_API_KEY, model = GeminiLlmEngine.VISION_MODEL)
+        }
+        ActionDispatcher(context, agentLoopEngine = agentEngine, cloudProvider = cloudProvider)
     }
     val speculationLog = remember { SpeculationLog() }
 

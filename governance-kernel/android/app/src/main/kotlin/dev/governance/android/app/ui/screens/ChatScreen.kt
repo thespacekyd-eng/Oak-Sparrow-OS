@@ -228,6 +228,9 @@ private fun TypingIndicator() {
 
 @Composable
 private fun UserBubble(text: String) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -244,6 +247,22 @@ private fun UserBubble(text: String) {
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 style = MaterialTheme.typography.bodyMedium,
                 color = OakPalette.OnUserBubble,
+            )
+        }
+
+        // Copy button
+        IconButton(
+            onClick = {
+                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.size(28.dp),
+        ) {
+            Icon(
+                Icons.Filled.ContentCopy,
+                contentDescription = "Copy",
+                modifier = Modifier.size(14.dp),
+                tint = OakPalette.TextTertiary,
             )
         }
     }

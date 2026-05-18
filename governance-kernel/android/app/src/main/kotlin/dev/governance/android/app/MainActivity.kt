@@ -114,35 +114,51 @@ private fun MainNavigation(
 
     // User preferences
     var llmMode by remember { mutableStateOf(LlmPreference.getLlmMode(context)) }
+    var cloudProvider by remember { mutableStateOf(CloudProviderPreference.get(context)) }
     val hasCloudKey = BuildConfig.CLOUD_API_KEY.isNotBlank()
+    val hasGeminiKey = BuildConfig.GEMINI_API_KEY.isNotBlank()
 
     // Memory
     val oakMemory = remember { OakMemory(context) }
 
-    // LLM wiring
-    val cloudEnabled = hasCloudKey && llmMode != LlmMode.ON_DEVICE
-    val planner = remember(llmMode) {
-        // Haiku for action planning — fast routing, JSON generation
-        val cloud = CloudLlmEngine(
-            apiKey = BuildConfig.CLOUD_API_KEY,
-        )
+    // LLM wiring — provider-aware
+    val anyCloudAvailable = (hasCloudKey && cloudProvider == CloudProvider.CLAUDE) ||
+        (hasGeminiKey && cloudProvider == CloudProvider.GEMINI)
+    val cloudEnabled = anyCloudAvailable && llmMode != LlmMode.ON_DEVICE
+    val planner = remember(llmMode, cloudProvider) {
+        val cloud: LlmEngine = when (cloudProvider) {
+            CloudProvider.CLAUDE -> CloudLlmEngine(apiKey = BuildConfig.CLOUD_API_KEY)
+            CloudProvider.GEMINI -> GeminiLlmEngine(apiKey = BuildConfig.GEMINI_API_KEY)
+        }
         val local = LlamaCppLlmEngine(context)
         val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
         val webSearchEngine = WebSearchEngine()
         val conversation = if (cloudEnabled) {
-            ConversationEngine(
-                apiKey = BuildConfig.CLOUD_API_KEY,
-                memoryBlock = oakMemory.toPromptBlock(),
-                onRemember = { fact -> oakMemory.addMemory(fact) },
-                onForget = { fact -> oakMemory.removeMemory(fact) },
-                webSearch = webSearchEngine,
-            )
+            when (cloudProvider) {
+                CloudProvider.CLAUDE -> ConversationEngine(
+                    apiKey = BuildConfig.CLOUD_API_KEY,
+                    memoryBlock = oakMemory.toPromptBlock(),
+                    onRemember = { fact -> oakMemory.addMemory(fact) },
+                    onForget = { fact -> oakMemory.removeMemory(fact) },
+                    webSearch = webSearchEngine,
+                )
+                CloudProvider.GEMINI -> GeminiConversationEngine(
+                    apiKey = BuildConfig.GEMINI_API_KEY,
+                    memoryBlock = oakMemory.toPromptBlock(),
+                    onRemember = { fact -> oakMemory.addMemory(fact) },
+                    onForget = { fact -> oakMemory.removeMemory(fact) },
+                    webSearch = webSearchEngine,
+                )
+            }
         } else null
         Planner(hybrid, conversationEngine = conversation)
     }
-    val dispatcher = remember {
-        val cloud = CloudLlmEngine(apiKey = BuildConfig.CLOUD_API_KEY, model = BuildConfig.CLOUD_MODEL)
-        ActionDispatcher(context, agentLoopEngine = cloud)
+    val dispatcher = remember(cloudProvider) {
+        val agentEngine: LlmEngine = when (cloudProvider) {
+            CloudProvider.CLAUDE -> CloudLlmEngine(apiKey = BuildConfig.CLOUD_API_KEY, model = BuildConfig.CLOUD_MODEL)
+            CloudProvider.GEMINI -> GeminiLlmEngine(apiKey = BuildConfig.GEMINI_API_KEY, model = GeminiLlmEngine.VISION_MODEL)
+        }
+        ActionDispatcher(context, agentLoopEngine = agentEngine, cloudProvider = cloudProvider)
     }
     val speculationLog = remember { SpeculationLog() }
 
@@ -419,6 +435,12 @@ private fun MainNavigation(
                             LlmPreference.setLlmMode(context, mode)
                         },
                         hasCloudKey = hasCloudKey,
+                        cloudProvider = cloudProvider,
+                        onCloudProviderChange = { provider ->
+                            cloudProvider = provider
+                            CloudProviderPreference.set(context, provider)
+                        },
+                        hasGeminiKey = hasGeminiKey,
                     )
                 }
             }

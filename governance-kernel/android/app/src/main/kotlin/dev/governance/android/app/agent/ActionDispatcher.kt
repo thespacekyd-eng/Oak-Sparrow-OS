@@ -35,6 +35,8 @@ class ActionDispatcher(
     private val context: Context,
     /** LLM engine for the agent loop (ui_interact). Set after construction. */
     var agentLoopEngine: LlmEngine? = null,
+    /** Cloud provider for vision agent loop. */
+    var cloudProvider: CloudProvider = CloudProvider.CLAUDE,
 ) {
 
     suspend fun dispatch(decision: GateDecision, step: PlannedStep): DispatchResult =
@@ -669,7 +671,11 @@ class ActionDispatcher(
      */
     private suspend fun dispatchUiInteract(task: String, extra: String?): DispatchResult {
         return try {
-            if (dev.governance.android.app.BuildConfig.CLOUD_API_KEY.isBlank()) {
+            val hasCloudKey = when (cloudProvider) {
+                CloudProvider.CLAUDE -> dev.governance.android.app.BuildConfig.CLOUD_API_KEY.isNotBlank()
+                CloudProvider.GEMINI -> dev.governance.android.app.BuildConfig.GEMINI_API_KEY.isNotBlank()
+            }
+            if (!hasCloudKey) {
                 return DispatchResult.Failed(
                     "Cloud API key required for complex UI tasks. Configure in Settings."
                 )
@@ -685,11 +691,20 @@ class ActionDispatcher(
             delay(3000)
 
             // Use vision-based agent loop — takes screenshots and sends
-            // to Claude vision for reasoning. Works on ANY app regardless
+            // to cloud vision API for reasoning. Works on ANY app regardless
             // of accessibility tree quality.
-            val visionLoop = VisionAgentLoop(
-                apiKey = dev.governance.android.app.BuildConfig.CLOUD_API_KEY,
-            )
+            val visionLoop = when (cloudProvider) {
+                CloudProvider.CLAUDE -> VisionAgentLoop(
+                    apiKey = dev.governance.android.app.BuildConfig.CLOUD_API_KEY,
+                    provider = CloudProvider.CLAUDE,
+                )
+                CloudProvider.GEMINI -> VisionAgentLoop(
+                    apiKey = dev.governance.android.app.BuildConfig.GEMINI_API_KEY,
+                    model = GeminiLlmEngine.VISION_MODEL,
+                    provider = CloudProvider.GEMINI,
+                    fallbackApiKey = dev.governance.android.app.BuildConfig.CLOUD_API_KEY,
+                )
+            }
             val result = visionLoop.execute(task)
 
             // Bring the assistant overlay back

@@ -37,6 +37,8 @@ class VisionAgentLoop(
     private val apiKey: String,
     private val model: String = "claude-opus-4-6",
     private val maxSteps: Int = 15,
+    private val provider: CloudProvider = CloudProvider.CLAUDE,
+    private val fallbackApiKey: String = "",
 ) {
 
     data class LoopResult(
@@ -197,18 +199,97 @@ class VisionAgentLoop(
         history: List<String>,
         stepNum: Int,
     ): String {
-        val historyText = if (history.isEmpty()) "No actions taken yet."
-        else history.takeLast(5).joinToString("\n")
-
-        val userText = buildString {
-            appendLine("Task: $task")
-            appendLine("Step: $stepNum / $maxSteps")
-            appendLine()
-            appendLine("Recent actions:")
-            appendLine(historyText)
-            appendLine()
-            appendLine("Look at the screenshot and decide the next action.")
+        return when (provider) {
+            CloudProvider.CLAUDE -> askClaudeVision(task, screenshotBase64, history, stepNum)
+            CloudProvider.GEMINI -> {
+                try {
+                    askGeminiVision(task, screenshotBase64, history, stepNum)
+                } catch (e: Exception) {
+                    // Fall back to Claude vision if Gemini fails and Claude key is available
+                    if (fallbackApiKey.isNotBlank()) {
+                        Log.w(TAG, "Gemini vision failed (${e.message}), falling back to Claude")
+                        askClaudeVisionWithKey(fallbackApiKey, task, screenshotBase64, history, stepNum)
+                    } else {
+                        throw e
+                    }
+                }
+            }
         }
+    }
+
+    /** Claude vision call with an explicit API key (for fallback). */
+    private suspend fun askClaudeVisionWithKey(
+        key: String,
+        task: String,
+        screenshotBase64: String,
+        history: List<String>,
+        stepNum: Int,
+    ): String {
+        val userText = buildVisionUserText(task, history, stepNum)
+
+        val requestBody = buildJsonObject {
+            put("model", "claude-opus-4-6")
+            put("max_tokens", 60)
+            put("system", SYSTEM_PROMPT)
+            putJsonArray("messages") {
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("content") {
+                        addJsonObject {
+                            put("type", "image")
+                            putJsonObject("source") {
+                                put("type", "base64")
+                                put("media_type", "image/jpeg")
+                                put("data", screenshotBase64)
+                            }
+                        }
+                        addJsonObject {
+                            put("type", "text")
+                            put("text", userText)
+                        }
+                    }
+                }
+            }
+        }.toString()
+
+        val connection = (URL(API_URL).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("x-api-key", key)
+            setRequestProperty("anthropic-version", API_VERSION)
+            doOutput = true
+            connectTimeout = 10_000
+            readTimeout = 60_000
+        }
+
+        try {
+            connection.outputStream.use { it.write(requestBody.toByteArray()) }
+
+            val responseCode = connection.responseCode
+            if (responseCode != 200) {
+                val error = connection.errorStream?.bufferedReader()?.readText() ?: "unknown"
+                Log.e(TAG, "Claude fallback vision API error $responseCode: ${error.take(300)}")
+                throw RuntimeException("Claude fallback vision API returned $responseCode")
+            }
+
+            val responseStr = connection.inputStream.bufferedReader().readText()
+            val json = Json.parseToJsonElement(responseStr).jsonObject
+            return json["content"]?.jsonArray
+                ?.firstOrNull()?.jsonObject
+                ?.get("text")?.jsonPrimitive?.content
+                ?: throw RuntimeException("No content in Claude fallback vision response")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private suspend fun askClaudeVision(
+        task: String,
+        screenshotBase64: String,
+        history: List<String>,
+        stepNum: Int,
+    ): String {
+        val userText = buildVisionUserText(task, history, stepNum)
 
         val requestBody = buildJsonObject {
             put("model", model)
@@ -251,8 +332,8 @@ class VisionAgentLoop(
             val responseCode = connection.responseCode
             if (responseCode != 200) {
                 val error = connection.errorStream?.bufferedReader()?.readText() ?: "unknown"
-                Log.e(TAG, "Vision API error $responseCode: ${error.take(300)}")
-                throw RuntimeException("Vision API returned $responseCode")
+                Log.e(TAG, "Claude vision API error $responseCode: ${error.take(300)}")
+                throw RuntimeException("Claude vision API returned $responseCode")
             }
 
             val responseStr = connection.inputStream.bufferedReader().readText()
@@ -260,9 +341,103 @@ class VisionAgentLoop(
             return json["content"]?.jsonArray
                 ?.firstOrNull()?.jsonObject
                 ?.get("text")?.jsonPrimitive?.content
-                ?: throw RuntimeException("No content in vision response")
+                ?: throw RuntimeException("No content in Claude vision response")
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private suspend fun askGeminiVision(
+        task: String,
+        screenshotBase64: String,
+        history: List<String>,
+        stepNum: Int,
+    ): String {
+        val userText = buildVisionUserText(task, history, stepNum)
+
+        val requestBody = buildJsonObject {
+            putJsonObject("system_instruction") {
+                putJsonArray("parts") {
+                    addJsonObject { put("text", SYSTEM_PROMPT) }
+                }
+            }
+            putJsonArray("contents") {
+                addJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") {
+                        addJsonObject {
+                            putJsonObject("inline_data") {
+                                put("mime_type", "image/jpeg")
+                                put("data", screenshotBase64)
+                            }
+                        }
+                        addJsonObject { put("text", userText) }
+                    }
+                }
+            }
+            putJsonObject("generationConfig") {
+                put("maxOutputTokens", 60)
+            }
+        }.toString()
+
+        val url = "${GeminiLlmEngine.API_BASE}/models/$model:generateContent?key=$apiKey"
+
+        var lastError: Exception? = null
+        for (attempt in 0 until VISION_MAX_RETRIES) {
+            if (attempt > 0) {
+                val delayMs = 1000L * (1 shl (attempt - 1))
+                Log.i(TAG, "Gemini vision retry $attempt after ${delayMs}ms")
+                delay(delayMs)
+            }
+
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput = true
+                connectTimeout = 10_000
+                readTimeout = 60_000
+            }
+
+            try {
+                connection.outputStream.use { it.write(requestBody.toByteArray()) }
+
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
+                    val responseStr = connection.inputStream.bufferedReader().readText()
+                    return GeminiLlmEngine.extractTextFromResponse(responseStr)
+                }
+
+                val error = connection.errorStream?.bufferedReader()?.readText() ?: "unknown"
+                Log.e(TAG, "Gemini vision API error $responseCode: ${error.take(300)}")
+
+                if (responseCode in setOf(429, 503) && attempt < VISION_MAX_RETRIES - 1) {
+                    lastError = RuntimeException("Gemini vision API returned $responseCode")
+                    continue
+                }
+                throw RuntimeException("Gemini vision API returned $responseCode")
+            } finally {
+                connection.disconnect()
+            }
+        }
+        throw lastError ?: RuntimeException("Gemini vision API failed after $VISION_MAX_RETRIES attempts")
+    }
+
+    private fun buildVisionUserText(
+        task: String,
+        history: List<String>,
+        stepNum: Int,
+    ): String {
+        val historyText = if (history.isEmpty()) "No actions taken yet."
+        else history.takeLast(5).joinToString("\n")
+
+        return buildString {
+            appendLine("Task: $task")
+            appendLine("Step: $stepNum / $maxSteps")
+            appendLine()
+            appendLine("Recent actions:")
+            appendLine(historyText)
+            appendLine()
+            appendLine("Look at the screenshot and decide the next action.")
         }
     }
 
@@ -323,6 +498,7 @@ class VisionAgentLoop(
         private const val API_URL = "https://api.anthropic.com/v1/messages"
         private const val API_VERSION = "2023-06-01"
         private const val SCREENSHOT_WIDTH = 720
+        private const val VISION_MAX_RETRIES = 3
 
         private val SYSTEM_PROMPT = """
 You are Oak, an AI agent that controls a phone by looking at screenshots.

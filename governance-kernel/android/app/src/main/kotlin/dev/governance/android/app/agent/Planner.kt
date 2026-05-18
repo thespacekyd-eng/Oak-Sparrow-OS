@@ -27,7 +27,7 @@ import java.io.File
  */
 class Planner(
     private val engine: LlmEngine,
-    private val conversationEngine: ConversationEngine? = null,
+    private val conversationEngine: ConversationProvider? = null,
 ) {
 
     /**

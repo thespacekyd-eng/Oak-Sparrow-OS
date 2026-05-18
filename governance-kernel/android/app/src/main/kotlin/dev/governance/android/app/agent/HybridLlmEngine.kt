@@ -18,7 +18,7 @@ import java.io.File
  * "open camera", "set alarm for 7am" never hit the cloud at all.
  */
 class HybridLlmEngine(
-    private val cloud: CloudLlmEngine,
+    private val cloud: LlmEngine,
     private val local: LlmEngine,
     var cloudEnabled: Boolean = true,
 ) : LlmEngine {
