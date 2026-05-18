@@ -57,11 +57,14 @@ class AuthorizationActivity : ComponentActivity() {
                     HoldConfirmationDialog(
                         decision = decision,
                         onApprove = {
+                            android.util.Log.i("AuthorizationActivity", "onApprove: delivering result true")
                             AuthorizationResultBridge.deliverResult(true)
+                            android.util.Log.i("AuthorizationActivity", "onApprove: result delivered, finishing")
                             setResult(RESULT_OK)
                             finish()
                         },
                         onSkip = {
+                            android.util.Log.i("AuthorizationActivity", "onSkip: delivering result false")
                             AuthorizationResultBridge.deliverResult(false)
                             setResult(RESULT_CANCELED)
                             finish()

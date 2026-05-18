@@ -107,7 +107,9 @@ class AgentOrchestrator(
 
     private suspend fun launchAuthAndWait(decision: GateDecision): Boolean {
         val bridge = AuthorizationResultBridge
+        val auditId = decision.auditId.value
         bridge.reset()
+        bridge.create(auditId)
 
         val json = Json.encodeToString(GateDecision.serializer(), decision)
         val intent = Intent(context, AuthorizationActivity::class.java).apply {
@@ -116,10 +118,10 @@ class AgentOrchestrator(
         }
         context.startActivity(intent)
 
-        // Wait for user to approve or skip (max 20 seconds)
+        // Wait for user to approve or skip (max 60 seconds)
         // Must exceed the dialog's 14s auto-deny plus normal user
         // reaction time. 60s gives the user ample time to read and decide.
-        return bridge.awaitResult(timeoutMs = 60_000)
+        return bridge.awaitResult(auditId, timeoutMs = 60_000)
     }
 
     private fun resultToState(result: DispatchResult): ExecutionLog.StepState =

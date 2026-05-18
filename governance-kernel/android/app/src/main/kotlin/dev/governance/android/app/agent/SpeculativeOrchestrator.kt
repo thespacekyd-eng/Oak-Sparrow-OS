@@ -344,7 +344,12 @@ class SpeculativeOrchestrator(
 
     private suspend fun launchAuthAndWait(decision: GateDecision): Boolean {
         val bridge = AuthorizationResultBridge
+        val auditId = decision.auditId.value
+        // Create a deferred for this specific decision BEFORE launching the activity.
+        // reset() would null activeKey and complete any existing deferred with false,
+        // so we must call create() after reset() to register a new deferred + activeKey.
         bridge.reset()
+        bridge.create(auditId)
 
         val json = Json.encodeToString(GateDecision.serializer(), decision)
         val intent = Intent(context, AuthorizationActivity::class.java).apply {
@@ -352,7 +357,7 @@ class SpeculativeOrchestrator(
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
-        return bridge.awaitResult(timeoutMs = 60_000)
+        return bridge.awaitResult(auditId, timeoutMs = 60_000)
     }
 
     private fun resultToState(result: DispatchResult): ExecutionLog.StepState =

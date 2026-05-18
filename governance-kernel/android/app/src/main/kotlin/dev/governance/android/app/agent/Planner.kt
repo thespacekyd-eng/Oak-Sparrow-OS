@@ -137,9 +137,28 @@ class Planner(
                 "open ", "launch ", "text ", "call ", "dial ", "email ",
                 "set alarm", "set timer", "search ", "navigate ", "play ",
                 "turn on", "turn off", "volume ", "flashlight", "camera",
-                "share ", "download ", "install ",
+                "share ", "download ", "install ", "take ", "toggle ",
+                "mute", "unmute", "get directions", "read my", "change ",
+                "create ", "send ", "set brightness", "pull up",
             )
             if (commandPrefixes.any { lower.startsWith(it) }) return false
+
+            // Action words anywhere in a short instruction — NOT conversational
+            val actionWords = listOf(
+                "alarm", "timer", "photo", "selfie", "picture",
+                "flashlight", "brightness", "wallpaper", "volume",
+                "directions", "navigate", "dnd", "do not disturb",
+            )
+            if (actionWords.any { lower.contains(it) }) return false
+
+            // Info-seeking phrases — should use ConversationEngine with web search
+            val infoPatterns = listOf(
+                "latest news", "recent news", "current news", "news about",
+                "updates on", "what happened", "what's happening",
+                "stock price", "price of", "weather in", "weather today",
+                "score of", "who won", "who is winning",
+            )
+            if (infoPatterns.any { lower.contains(it) }) return true
 
             // Conversational indicators
             val conversationalPatterns = listOf(
@@ -151,8 +170,8 @@ class Planner(
                 Regex("^(and |also |but |so |wait |actually |oh |hmm|okay|ok |yeah|yes|no |nah)\\b"),
                 // Opinions / discussion
                 Regex("^(i think|i feel|i want to know|i'm curious|explain|describe|compare)\\b"),
-                // Short responses (likely follow-up in conversation)
-                Regex("^.{1,15}$"), // very short inputs are usually conversational
+                // Short responses (likely follow-up in conversation, but not action-like)
+                Regex("^.{1,8}$"), // only very short inputs (greetings, yes/no)
             )
             if (conversationalPatterns.any { it.containsMatchIn(lower) }) return true
 
@@ -463,6 +482,20 @@ class Planner(
                 ))
             }
 
+            // --- Do Not Disturb (must be before Settings to avoid "turn on" match) ---
+            if (lower.contains("do not disturb") || lower.contains("dnd") ||
+                lower.contains("don't disturb") || lower.contains("silent mode")) {
+                return PlanResult.Success(Plan(
+                    summary = "Do Not Disturb",
+                    steps = listOf(PlannedStep(
+                        kind = "toggle_dnd",
+                        target = null,
+                        rationale = "Toggle Do Not Disturb",
+                        reversibility = Reversibility.FullyReversible,
+                    )),
+                ))
+            }
+
             // --- Settings ---
             if (lower.contains("turn on") || lower.contains("turn off") ||
                 lower.contains("enable") || lower.contains("disable") ||
@@ -587,20 +620,6 @@ class Planner(
                         kind = "toggle_flashlight",
                         target = null,
                         rationale = "Toggle flashlight",
-                        reversibility = Reversibility.FullyReversible,
-                    )),
-                ))
-            }
-
-            // --- Do Not Disturb ---
-            if (lower.contains("do not disturb") || lower.contains("dnd") ||
-                lower.contains("don't disturb") || lower.contains("silent mode")) {
-                return PlanResult.Success(Plan(
-                    summary = "Do Not Disturb",
-                    steps = listOf(PlannedStep(
-                        kind = "toggle_dnd",
-                        target = null,
-                        rationale = "Toggle Do Not Disturb",
                         reversibility = Reversibility.FullyReversible,
                     )),
                 ))

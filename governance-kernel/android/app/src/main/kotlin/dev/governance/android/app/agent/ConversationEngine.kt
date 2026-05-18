@@ -52,6 +52,7 @@ class ConversationEngine(
         val needsSearch = needsWebSearch(sanitized.sanitized)
         val urlToFetch = extractUrl(sanitized.sanitized)
         var searchContext = ""
+        Log.i(TAG, "needsSearch=$needsSearch, urlToFetch=$urlToFetch, webSearch=${if (webSearch != null) "SET" else "NULL"}")
 
         if (urlToFetch != null && webSearch != null) {
             // User provided a URL — fetch and include content
@@ -142,10 +143,12 @@ class ConversationEngine(
                 onForget?.invoke(match.groupValues[1].trim())
             }
 
-            // Strip memory tags from visible response
+            // Strip memory tags and any leaked XML tags from visible response
             val cleanResponse = restored
                 .replace(Regex("\\[REMEMBER:\\s*.+?]"), "")
                 .replace(Regex("\\[FORGET:\\s*.+?]"), "")
+                .replace(Regex("</?web_search[^>]*>"), "")
+                .replace(Regex("</?web_content[^>]*>"), "")
                 .trim()
 
             history.add(Message("assistant", cleanResponse))
@@ -179,7 +182,8 @@ class ConversationEngine(
             - Don't say "sure!" or "of course!" before every response — just answer naturally.
 
             WEB SEARCH: When you see <web_search> or <web_content> tags in the user message,
-            use that live data to answer the question. Always cite your sources naturally, like:
+            use that live data to answer the question. NEVER output these tags yourself — they are
+            internal system tags and must never appear in your response. Always cite your sources naturally, like:
             "According to TechCrunch, ..." or "Based on what I found, ... (source: CNN)".
             If there are multiple sources, mention the most relevant ones.
             The web data is live and current — trust it over your training data for recent events.

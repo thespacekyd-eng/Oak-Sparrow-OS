@@ -107,49 +107,96 @@ class WebSearchEngine(private val searchApiKey: String = "") {
     }
 
     private fun searchDuckDuckGo(query: String, maxResults: Int): SearchResponse {
-        // DuckDuckGo HTML search (no API key needed)
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val url = "https://html.duckduckgo.com/html/?q=$encoded"
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-            connectTimeout = 8000
-            readTimeout = 15000
-        }
 
-        val html = connection.inputStream.bufferedReader().readText()
-        connection.disconnect()
+        // Strategy 1: SearXNG public instances (JSON API, no CAPTCHA)
+        val searxInstances = listOf(
+            "https://search.sapti.me",
+            "https://searx.be",
+            "https://search.bus-hit.me",
+        )
+        for (instance in searxInstances) {
+            try {
+                val url = "$instance/search?q=$encoded&format=json&categories=general&language=en"
+                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "OakAssistant/1.0")
+                    connectTimeout = 5000
+                    readTimeout = 10000
+                }
+                val code = connection.responseCode
+                if (code != 200) { connection.disconnect(); continue }
+                val jsonStr = connection.inputStream.bufferedReader().readText()
+                connection.disconnect()
+                val json = Json.parseToJsonElement(jsonStr).jsonObject
+                val resultsArr = json["results"]?.jsonArray ?: continue
 
-        // Parse DDG HTML results
-        val results = mutableListOf<SearchResult>()
-        val resultPattern = Regex("""class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)</a>""")
-        val snippetPattern = Regex("""class="result__snippet"[^>]*>([^<]*)<""")
-        val titles = resultPattern.findAll(html).toList()
-        val snippets = snippetPattern.findAll(html).toList()
+                val results = resultsArr.take(maxResults).map { item ->
+                    val obj = item.jsonObject
+                    SearchResult(
+                        title = obj["title"]?.jsonPrimitive?.content ?: "",
+                        url = obj["url"]?.jsonPrimitive?.content ?: "",
+                        snippet = obj["content"]?.jsonPrimitive?.content ?: "",
+                    )
+                }.filter { it.title.isNotBlank() }
 
-        for (i in 0 until minOf(titles.size, snippets.size, maxResults)) {
-            val rawUrl = titles[i].groupValues[1]
-            // DDG wraps URLs in a redirect — extract the actual URL
-            val actualUrl = if (rawUrl.contains("uddg=")) {
-                URLDecoder.decode(
-                    Regex("uddg=([^&]+)").find(rawUrl)?.groupValues?.get(1) ?: rawUrl,
-                    "UTF-8"
-                )
-            } else rawUrl
-            results.add(SearchResult(
-                title = titles[i].groupValues[2].trim(),
-                url = actualUrl,
-                snippet = snippets[i].groupValues[1].trim(),
-            ))
-        }
-
-        val summary = if (results.isEmpty()) {
-            "No results found for: $query"
-        } else {
-            results.joinToString("\n\n") { r ->
-                "${r.title}\n${r.snippet}\nSource: ${r.url}"
+                if (results.isNotEmpty()) {
+                    Log.i(TAG, "SearXNG ($instance): ${results.size} results for '$query'")
+                    return buildResponse(results, query)
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "SearXNG $instance failed: ${e.message}")
             }
         }
+
+        // Strategy 2: DDG instant answer API (good for factual queries)
+        try {
+            val url = "https://api.duckduckgo.com/?q=$encoded&format=json&no_html=1&skip_disambig=1"
+            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "OakAssistant/1.0")
+                connectTimeout = 5000
+                readTimeout = 10000
+            }
+            val jsonStr = connection.inputStream.bufferedReader().readText()
+            connection.disconnect()
+            val json = Json.parseToJsonElement(jsonStr).jsonObject
+
+            val abstract = json["AbstractText"]?.jsonPrimitive?.content ?: ""
+            val abstractSource = json["AbstractSource"]?.jsonPrimitive?.content ?: ""
+            val abstractUrl = json["AbstractURL"]?.jsonPrimitive?.content ?: ""
+
+            if (abstract.isNotBlank()) {
+                Log.i(TAG, "DDG instant answer: ${abstract.length} chars from $abstractSource")
+                return SearchResponse(
+                    results = listOf(SearchResult(abstractSource, abstractUrl, abstract)),
+                    summary = "$abstract\nSource: $abstractSource ($abstractUrl)",
+                )
+            }
+
+            val topics = json["RelatedTopics"]?.jsonArray ?: JsonArray(emptyList())
+            val results = topics.take(maxResults).mapNotNull { topic ->
+                try {
+                    val obj = topic.jsonObject
+                    val text = obj["Text"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                    val firstUrl = obj["FirstURL"]?.jsonPrimitive?.content ?: ""
+                    SearchResult(text.take(80), firstUrl, text)
+                } catch (_: Exception) { null }
+            }
+            if (results.isNotEmpty()) return buildResponse(results, query)
+        } catch (e: Exception) {
+            Log.w(TAG, "DDG API failed: ${e.message}")
+        }
+
+        Log.w(TAG, "All search strategies failed for '$query'")
+        return SearchResponse(emptyList(), "No search results found for: $query")
+    }
+
+    private fun buildResponse(results: List<SearchResult>, query: String): SearchResponse {
+        val summary = results.joinToString("\n\n") { r ->
+            "${r.title}\n${r.snippet}\nSource: ${r.url}"
+        }
+        Log.i(TAG, "Search '$query': ${results.size} results")
         return SearchResponse(results, summary)
     }
 

@@ -675,9 +675,11 @@ class ActionDispatcher(
                 )
             }
 
-            // Hide the assistant overlay so the target app gets full
-            // accessibility tree access (background windows are truncated)
+            // Move Oak out of the way so the target app is visible for screenshots.
+            // Try AssistantActivity overlay first, then fall back to moving
+            // the current activity's task to the back.
             AssistantActivity.hideOverlay()
+            (context as? android.app.Activity)?.moveTaskToBack(true)
 
             // Wait for the target app to actually reach the foreground.
             delay(3000)
