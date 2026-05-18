@@ -54,7 +54,6 @@ class ScreenshotTests {
                     errorCount = 0,
                     onDecisionTap = {},
                     onSeeDetails = {},
-                    onChatTap = {},
                 )
             }
         }
@@ -71,7 +70,6 @@ class ScreenshotTests {
                     errorCount = 0,
                     onDecisionTap = {},
                     onSeeDetails = {},
-                    onChatTap = {},
                 )
             }
         }
@@ -83,7 +81,7 @@ class ScreenshotTests {
     fun `02_recent_decisions_light`() = paparazzi.snapshot {
         MaterialTheme(colorScheme = lightColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
-                RecentDecisionsScreen(records = PreviewKernelState.auditRecords)
+                RecentDecisionsScreen(decisions = PreviewKernelState.recentDecisions)
             }
         }
     }
@@ -92,7 +90,7 @@ class ScreenshotTests {
     fun `02_recent_decisions_dark`() = paparazzi.snapshot {
         MaterialTheme(colorScheme = darkColorScheme()) {
             Surface(Modifier.fillMaxSize()) {
-                RecentDecisionsScreen(records = PreviewKernelState.auditRecords)
+                RecentDecisionsScreen(decisions = PreviewKernelState.recentDecisions)
             }
         }
     }

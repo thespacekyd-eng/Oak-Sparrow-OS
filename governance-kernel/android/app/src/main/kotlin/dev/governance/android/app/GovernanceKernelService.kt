@@ -180,6 +180,7 @@ class GovernanceKernelService : Service() {
             val decision = kernel.decide(currentState, proposed)
             pendingDecisions[decision.auditId.value] = decision
             decisionTimestamps[decision.auditId.value] = System.currentTimeMillis()
+            recordDecision(decision)
             updateNotification()
             return decision to currentState
         }
@@ -291,5 +292,21 @@ class GovernanceKernelService : Service() {
         const val CHANNEL_ID = "governance_service"
         const val NOTIFICATION_ID = 1
         const val DECISION_TTL_MS = 120_000L // 2 minutes
+        private const val MAX_RECENT_DECISIONS = 50
+
+        /** In-memory ring of recent decisions for the governance UI. */
+        val recentDecisions: List<GateDecision>
+            get() = synchronized(_recentDecisions) { _recentDecisions.toList() }
+
+        private val _recentDecisions = mutableListOf<GateDecision>()
+
+        internal fun recordDecision(decision: GateDecision) {
+            synchronized(_recentDecisions) {
+                _recentDecisions.add(0, decision) // newest first
+                if (_recentDecisions.size > MAX_RECENT_DECISIONS) {
+                    _recentDecisions.removeAt(_recentDecisions.lastIndex)
+                }
+            }
+        }
     }
 }

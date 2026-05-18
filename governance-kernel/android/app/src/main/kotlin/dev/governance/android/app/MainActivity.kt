@@ -371,21 +371,20 @@ private fun MainNavigation(
                     }
                 }
                 composable("governance") {
+                    val liveDecisions = remember { GovernanceKernelService.recentDecisions }
                     HomeScreen(
                         snapshot = snapshot,
-                        recentDecisions = PreviewKernelState.recentDecisions,
-                        observationCount = PreviewKernelState.systemEvents.size,
-                        errorCount = 0,
+                        recentDecisions = liveDecisions,
+                        observationCount = liveDecisions.size,
+                        errorCount = liveDecisions.count { it.outcome == dev.governance.core.Outcome.VETO },
                         onDecisionTap = { navController.navigate("decisions") },
                         onSeeDetails = { navController.navigate("technical") },
-                        onChatTap = { navController.navigate("chat") },
-                        onVoiceChatTap = { navController.navigate("voice-chat") },
-                        onSettingsTap = { navController.navigate("settings") },
                         buildMode = buildMode,
                     )
                 }
                 composable("decisions") {
-                    RecentDecisionsScreen(records = PreviewKernelState.auditRecords)
+                    val liveDecisions = remember { GovernanceKernelService.recentDecisions }
+                    RecentDecisionsScreen(decisions = liveDecisions)
                 }
                 composable("permissions") {
                     val apps = remember {

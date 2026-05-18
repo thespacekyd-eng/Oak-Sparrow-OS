@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import dev.governance.android.app.R
 import dev.governance.android.app.ui.ActionTemplates
 import dev.governance.attestation.AttestationVerifier
-import dev.governance.core.AuditRecord
+import dev.governance.core.GateDecision
 import dev.governance.core.Outcome
 import dev.governance.android.app.ui.RelativeTime
 
@@ -28,7 +28,7 @@ import dev.governance.android.app.ui.RelativeTime
  */
 @Composable
 fun RecentDecisionsScreen(
-    records: List<AuditRecord>,
+    decisions: List<GateDecision>,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -36,18 +36,16 @@ fun RecentDecisionsScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(records.sortedByDescending { it.timestamp }) { record ->
-            DecisionRow(record)
+        items(decisions.sortedByDescending { it.timestamp }) { decision ->
+            DecisionRow(decision)
         }
     }
 }
 
 @Composable
-private fun DecisionRow(record: AuditRecord) {
+private fun DecisionRow(decision: GateDecision) {
     var expanded by remember { mutableStateOf(false) }
     var verified by remember { mutableStateOf<Boolean?>(null) }
-
-    val decision = record.decision
     val time = RelativeTime.format(decision.timestamp)
     val label = ActionTemplates.pastTenseLabel(decision.actionKind)
     val outcome = ActionTemplates.outcomeLabel(decision.outcome)
