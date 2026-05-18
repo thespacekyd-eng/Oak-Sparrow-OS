@@ -55,6 +55,15 @@ android {
             ?: ""
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
 
+        // SerpAPI key (optional). Enables Google search results for Oak.
+        val serpKey = providers.gradleProperty("SERP_API_KEY").orNull
+            ?: rootProject.file("local.properties").takeIf { it.exists() }
+                ?.readLines()
+                ?.firstOrNull { it.startsWith("SERP_API_KEY=") }
+                ?.substringAfter("=")
+            ?: ""
+        buildConfigField("String", "SERP_API_KEY", "\"$serpKey\"")
+
         // Native build of liboaksparrow_llm.so (wraps llama.cpp).
         // Restrict ABIs to arm64 (modern phones) and x86_64 (emulator) to
         // keep APK size reasonable.

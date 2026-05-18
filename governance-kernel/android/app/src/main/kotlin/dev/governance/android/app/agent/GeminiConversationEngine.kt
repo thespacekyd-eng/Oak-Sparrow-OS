@@ -17,7 +17,7 @@ import kotlinx.serialization.json.*
 class GeminiConversationEngine(
     private val apiKey: String,
     private val model: String = GeminiLlmEngine.DEFAULT_MODEL,
-    private val maxTokens: Int = 300,
+    private val maxTokens: Int = 1024,
     var memoryBlock: String = "",
     var onRemember: ((String) -> Unit)? = null,
     var onForget: ((String) -> Unit)? = null,

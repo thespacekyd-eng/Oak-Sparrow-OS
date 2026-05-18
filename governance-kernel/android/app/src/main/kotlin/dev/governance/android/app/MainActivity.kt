@@ -132,7 +132,7 @@ private fun MainNavigation(
         }
         val local = LlamaCppLlmEngine(context)
         val hybrid = HybridLlmEngine(cloud = cloud, local = local, cloudEnabled = cloudEnabled)
-        val webSearchEngine = WebSearchEngine()
+        val webSearchEngine = WebSearchEngine(serpApiKey = BuildConfig.SERP_API_KEY)
         val conversation = if (cloudEnabled) {
             when (cloudProvider) {
                 CloudProvider.CLAUDE -> ConversationEngine(

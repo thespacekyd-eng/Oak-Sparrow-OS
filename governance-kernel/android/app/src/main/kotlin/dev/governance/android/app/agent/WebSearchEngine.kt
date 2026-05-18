@@ -21,7 +21,10 @@ import java.net.URLEncoder
  * Uses Brave Search API (free tier: 2000 queries/month) for web search.
  * Falls back to a simple Google scrape if no API key is configured.
  */
-class WebSearchEngine(private val searchApiKey: String = "") {
+class WebSearchEngine(
+    private val searchApiKey: String = "",
+    private val serpApiKey: String = "",
+) {
 
     data class SearchResult(
         val title: String,
@@ -40,7 +43,9 @@ class WebSearchEngine(private val searchApiKey: String = "") {
     suspend fun search(query: String, maxResults: Int = 5): SearchResponse =
         withContext(Dispatchers.IO) {
             try {
-                if (searchApiKey.isNotBlank()) {
+                if (serpApiKey.isNotBlank()) {
+                    searchSerpApi(query, maxResults)
+                } else if (searchApiKey.isNotBlank()) {
                     searchBrave(query, maxResults)
                 } else {
                     // Fallback: use DuckDuckGo instant answer API (no key needed)
@@ -74,6 +79,65 @@ class WebSearchEngine(private val searchApiKey: String = "") {
                 "Could not fetch URL: ${e.message}"
             }
         }
+
+    private fun searchSerpApi(query: String, maxResults: Int): SearchResponse {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val url = "https://serpapi.com/search.json?q=$encoded&api_key=$serpApiKey&engine=google&num=$maxResults"
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            setRequestProperty("Accept", "application/json")
+            connectTimeout = 8000
+            readTimeout = 15000
+        }
+
+        val responseStr = connection.inputStream.bufferedReader().readText()
+        connection.disconnect()
+        val json = Json.parseToJsonElement(responseStr).jsonObject
+
+        val results = mutableListOf<SearchResult>()
+
+        // Answer box (direct answer from Google)
+        val answerBox = json["answer_box"]?.jsonObject
+        if (answerBox != null) {
+            val answer = answerBox["answer"]?.jsonPrimitive?.content
+                ?: answerBox["snippet"]?.jsonPrimitive?.content
+                ?: answerBox["result"]?.jsonPrimitive?.content
+            if (answer != null) {
+                results.add(SearchResult(
+                    title = answerBox["title"]?.jsonPrimitive?.content ?: "Answer",
+                    url = answerBox["link"]?.jsonPrimitive?.content ?: "",
+                    snippet = answer,
+                ))
+            }
+        }
+
+        // Knowledge graph
+        val kg = json["knowledge_graph"]?.jsonObject
+        if (kg != null) {
+            val desc = kg["description"]?.jsonPrimitive?.content
+            if (desc != null) {
+                results.add(SearchResult(
+                    title = kg["title"]?.jsonPrimitive?.content ?: "Knowledge",
+                    url = kg["source"]?.jsonObject?.get("link")?.jsonPrimitive?.content ?: "",
+                    snippet = desc,
+                ))
+            }
+        }
+
+        // Organic results
+        val organic = json["organic_results"]?.jsonArray ?: JsonArray(emptyList())
+        for (item in organic.take(maxResults)) {
+            val obj = item.jsonObject
+            results.add(SearchResult(
+                title = obj["title"]?.jsonPrimitive?.content ?: "",
+                url = obj["link"]?.jsonPrimitive?.content ?: "",
+                snippet = obj["snippet"]?.jsonPrimitive?.content ?: "",
+            ))
+        }
+
+        Log.i(TAG, "SerpAPI: ${results.size} results for '$query'")
+        return buildResponse(results.take(maxResults), query)
+    }
 
     private fun searchBrave(query: String, maxResults: Int): SearchResponse {
         val encoded = URLEncoder.encode(query, "UTF-8")
