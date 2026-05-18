@@ -38,11 +38,14 @@ try:
     from rich.table import Table
     from rich.panel import Panel
     from rich import box
+    from rich.markup import escape as _rich_escape
     _HAS_RICH = True
     console = Console()
 except ImportError:
     _HAS_RICH = False
     console = None  # type: ignore
+    def _rich_escape(s: str) -> str:  # type: ignore[misc]
+        return s
 
 
 # ── Attack campaign scenario ──────────────────────────────────────────────────
@@ -139,10 +142,14 @@ def print_event(idx: int, prompt: str, notes: str, resp: AgentResponse) -> None:
             f"[bold]{notes}[/bold]  "
             f"[dim]{prompt[:55]}…[/dim]"
         )
+        safe_action    = _rich_escape(ev.policy_action)
+        safe_declared  = _rich_escape(ev.declared_intent)
+        safe_detected  = _rich_escape(ev.detected_intent)
+        action_color   = _action_color(ev.policy_action)
         console.print(
             f"    risk=[{row_color}]{ev.risk_score:.2f}[/{row_color}]  "
-            f"[{_action_color(ev.policy_action)}]{ev.policy_action}[/{_action_color(ev.policy_action)}]  "
-            f"declared={ev.declared_intent!r}  detected={ev.detected_intent!r}  "
+            f"[{action_color}]{safe_action}[/{action_color}]  "
+            f"declared={safe_declared!r}  detected={safe_detected!r}  "
             f"inj={ev.injection_detected}  exfil={bool(ev.exfiltration_patterns)}  "
             f"creds={ev.credentials_detected}"
         )
@@ -169,7 +176,7 @@ def print_report(report: CampaignReport, after_n: int) -> None:
         console.print(f"[dim]  bar: [{color}]{bar}[/{color}][/dim]")
         if report.is_anomalous and report.primary_signals:
             for sig in report.primary_signals:
-                console.print(f"  [yellow]→ {sig}[/yellow]")
+                console.print(f"  [yellow]→ {_rich_escape(sig)}[/yellow]")
     else:
         bar = _risk_bar(report.top_confidence)
         print(f"\n{marker} After {after_n}: conf={report.top_confidence:.0%}"
@@ -205,7 +212,7 @@ def print_final_report(report: CampaignReport, provider: str, via_proxy: bool) -
 
         if report.primary_signals:
             console.print(Panel(
-                "\n".join(f"• {s}" for s in report.primary_signals),
+                "\n".join(f"• {_rich_escape(s)}" for s in report.primary_signals),
                 title="[bold red]Campaign Signals[/bold red]",
                 border_style="red",
             ))

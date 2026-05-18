@@ -98,7 +98,15 @@ class LobsterAgentClient:
         self.model = model_override or self._MODELS[self.provider]
         self.system_prompt = system_prompt
         self.session_id = session_id
-        self.lobster_url: Optional[str] = os.environ.get("LOBSTER_TRAP_URL")
+        raw_url = os.environ.get("LOBSTER_TRAP_URL", "").strip()
+        if raw_url:
+            if not raw_url.startswith(("http://", "https://")):
+                raise ValueError(
+                    f"LOBSTER_TRAP_URL must use http:// or https://, got: {raw_url!r}"
+                )
+            self.lobster_url: Optional[str] = raw_url
+        else:
+            self.lobster_url = None
         self.via_proxy = bool(self.lobster_url)
         self._offline = os.environ.get("LOBSTER_OFFLINE") == "1" or self.provider == "offline"
 
@@ -107,6 +115,11 @@ class LobsterAgentClient:
 
     def _init_client(self) -> None:
         """Initialize the appropriate SDK client."""
+        if not self.api_key:
+            raise ValueError(
+                f"API key for provider '{self.provider}' is missing or empty. "
+                f"Set the appropriate environment variable before making calls."
+            )
         if self.lobster_url:
             # Route through Lobster Trap's OpenAI-compatible proxy regardless of provider
             from openai import OpenAI
@@ -274,9 +287,19 @@ class LobsterAgentClient:
             # Proxy did not return DPI metadata — simulate from content
             return simulate_dpi(prompt, reply, declared_intent, self.session_id)
 
+        _VALID_ACTIONS = {"ALLOW", "LOG", "RATE_LIMIT", "HUMAN_REVIEW", "QUARANTINE", "DENY"}
+        raw_action = lt.get("policy_action", "ALLOW")
+        safe_action = raw_action if raw_action in _VALID_ACTIONS else "HUMAN_REVIEW"
+
+        raw_risk = lt.get("risk_score", 0.0)
+        try:
+            safe_risk = max(0.0, min(1.0, float(raw_risk)))
+        except (TypeError, ValueError):
+            safe_risk = 0.0
+
         return LobsterEvent(
             timestamp=time.time(),
-            risk_score=float(lt.get("risk_score", 0.0)),
+            risk_score=safe_risk,
             intent_category=lt.get("intent_category", declared_intent),
             declared_intent=lt.get("declared_intent", declared_intent),
             detected_intent=lt.get("detected_intent", declared_intent),
@@ -287,7 +310,7 @@ class LobsterAgentClient:
             domains=list(lt.get("domains", [])),
             risky_commands=list(lt.get("risky_commands", [])),
             credentials_detected=bool(lt.get("credentials_detected", False)),
-            policy_action=lt.get("policy_action", "ALLOW"),
+            policy_action=safe_action,
             session_id=self.session_id,
             prompt_excerpt=prompt[:120],
         )

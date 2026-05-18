@@ -446,17 +446,32 @@ class CampaignDetector:
         anomaly_percentile: float = 90.0,
         reference_ratio: float = 0.4,
         high_confidence_threshold: float = 0.75,
+        max_events: int = 10_000,
     ) -> None:
+        if window_size < 1:
+            raise ValueError(f"window_size must be >= 1, got {window_size}")
+        resolved_stride = stride if stride is not None else max(1, window_size // 2)
+        if resolved_stride < 1:
+            raise ValueError(f"stride must be >= 1, got {resolved_stride}")
+        if not (0.0 < anomaly_percentile <= 100.0):
+            raise ValueError(f"anomaly_percentile must be in (0, 100], got {anomaly_percentile}")
+        if not (0.0 < reference_ratio < 1.0):
+            raise ValueError(f"reference_ratio must be in (0, 1), got {reference_ratio}")
+        if max_events < 1:
+            raise ValueError(f"max_events must be >= 1, got {max_events}")
         self.window_size = window_size
-        self.stride = stride if stride is not None else max(1, window_size // 2)
+        self.stride = resolved_stride
         self.anomaly_percentile = anomaly_percentile
         self.reference_ratio = reference_ratio
         self.high_confidence_threshold = high_confidence_threshold
+        self.max_events = max_events
         self._events: List[LobsterEvent] = []
 
     def add(self, event: LobsterEvent) -> None:
-        """Append a new DPI event to the rolling stream."""
+        """Append a new DPI event to the rolling stream, capping at max_events."""
         self._events.append(event)
+        if len(self._events) > self.max_events:
+            self._events = self._events[-self.max_events :]
 
     def analyze(self, events: Optional[List[LobsterEvent]] = None) -> CampaignReport:
         """
