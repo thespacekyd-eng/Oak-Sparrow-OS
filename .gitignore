@@ -35,3 +35,4 @@ _jackson_reference/
 __pycache__/
 *.pyc
 *.pyo
+venv/
