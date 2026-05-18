@@ -168,6 +168,6 @@ cd governance-kernel
 
 ## License
 
-Governance kernel: proprietary. See individual module READMEs.
-On-device LLM (Qwen3): Apache 2.0. Neural TTS (Kokoro): Apache 2.0.
-sherpa-onnx: Apache 2.0. llama.cpp: MIT.
+MIT License — non-proprietary, open source. See [LICENSE](LICENSE).
+
+Dependencies: Qwen3 (Apache 2.0), Kokoro TTS (Apache 2.0), sherpa-onnx (Apache 2.0), llama.cpp (MIT). All MIT-compliant.
